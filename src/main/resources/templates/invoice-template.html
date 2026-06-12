@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Invoice</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #333;
+            padding: 40px;
+        }
+        .invoice-container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #4A6BFF, #6C38FF);
+            padding: 30px;
+            text-align: center;
+            color: white;
+        }
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+        .header p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .invoice-title {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #4A6BFF;
+        }
+        .invoice-title h2 {
+            color: #4A6BFF;
+            font-size: 24px;
+        }
+        .invoice-title .dates {
+            text-align: right;
+        }
+        .bill-to {
+            margin-bottom: 30px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .bill-to h3 {
+            color: #4A6BFF;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .bill-to p {
+            margin: 5px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th {
+            background: #f0f0f0;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            border-bottom: 1px solid #ddd;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .totals {
+            text-align: right;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #ddd;
+        }
+        .totals-row {
+            display: flex;
+            justify-content: flex-end;
+            margin: 5px 0;
+        }
+        .totals-label {
+            width: 150px;
+            font-weight: bold;
+        }
+        .totals-value {
+            width: 150px;
+            text-align: right;
+        }
+        .grand-total {
+            font-size: 18px;
+            font-weight: bold;
+            color: #4A6BFF;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 2px solid #4A6BFF;
+        }
+        .payment-info {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e8f0fe;
+            border-radius: 6px;
+        }
+        .footer {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 10px;
+            color: #666;
+            border-top: 1px solid #ddd;
+        }
+        .status-paid {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .text-right {
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+<div class="invoice-container">
+    <!-- Header -->
+    <div class="header">
+        <h1>SKYFLIGHT</h1>
+        <p>booking@skyflightbooking.ru</p>
+        <p>Tax ID: XXX-XXX-XXX</p>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+        <!-- Invoice Title -->
+        <div class="invoice-title">
+            <div>
+                <h2>INVOICE</h2>
+                <p><span th:text="${invoice.invoiceNumber}">INV-20241225-00001</span></p>
+            </div>
+            <div class="dates">
+                <p><strong>Date:</strong> <span th:text="${issueDateFormatted}">Dec 25, 2024</span></p>
+                <p><strong>Due:</strong> <span th:text="${dueDateFormatted}">Dec 25, 2024</span></p>
+                <p><strong>Status:</strong> <span class="status-paid">PAID</span></p>
+            </div>
+        </div>
+
+        <!-- Bill To -->
+        <div class="bill-to">
+            <h3>Bill To:</h3>
+            <p><strong><span th:text="${user.name}">John Doe</span></strong></p>
+            <p><span th:text="${user.email}">john.doe@example.com</span></p>
+        </div>
+
+        <!-- Items Table -->
+        <table>
+            <thead>
+            <tr>
+                <th>Description</th>
+                <th class="text-right">Qty</th>
+                <th class="text-right">Price</th>
+                <th class="text-right">Total</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td>
+                    <strong><span th:text="${flight.airlineName}">Airline</span></strong><br/>
+                    Flight: <span th:text="${flight.departureCity}">Moscow</span> →
+                    <span th:text="${flight.arrivalCity}">Sochi</span><br/>
+                    Date: <span th:text="${flight.flightDate}">2024-12-25</span><br/>
+                    Seats: <span th:text="${booking.seatNumbers}">A2, B3</span><br/>
+                    Class: <span th:text="${flight.classSeat}">Economy</span>
+                </td>
+                <td class="text-right"><span th:text="${booking.seatCount}">2</span></td>
+                <td class="text-right">$<span th:text="${#numbers.formatDecimal(flight.price, 1, 2)}">94.78</span></td>
+                <td class="text-right">$<span th:text="${#numbers.formatDecimal(invoice.subtotal, 1, 2)}">189.56</span></td>
+            </tr>
+            </tbody>
+        </table>
+
+        <!-- Discount Section -->
+        <div th:if="${invoice.discountAmount > 0}">
+            <div class="totals-row">
+                <span class="totals-label">Discount:</span>
+                <span class="totals-value">-$<span th:text="${#numbers.formatDecimal(invoice.discountAmount, 1, 2)}">10.00</span></span>
+            </div>
+            <div th:if="${promocodeCode}" class="totals-row">
+                <span class="totals-label">Promocode:</span>
+                <span class="totals-value"><span th:text="${promocodeCode}">WELCOME10</span></span>
+            </div>
+        </div>
+
+        <!-- Tax Section -->
+        <div th:if="${invoice.taxAmount > 0}">
+            <div class="totals-row">
+                <span class="totals-label"><span th:text="${taxName}">VAT</span> (<span th:text="${invoice.taxRate}">20</span>%):</span>
+                <span class="totals-value">$<span th:text="${#numbers.formatDecimal(invoice.taxAmount, 1, 2)}">0.00</span></span>
+            </div>
+        </div>
+
+        <!-- Totals -->
+        <div class="totals">
+            <div class="totals-row">
+                <span class="totals-label">Subtotal:</span>
+                <span class="totals-value">$<span th:text="${#numbers.formatDecimal(invoice.subtotal, 1, 2)}">189.56</span></span>
+            </div>
+            <div th:if="${invoice.discountAmount > 0}" class="totals-row">
+                <span class="totals-label">Discount:</span>
+                <span class="totals-value">-$<span th:text="${#numbers.formatDecimal(invoice.discountAmount, 1, 2)}">10.00</span></span>
+            </div>
+            <div th:if="${invoice.taxAmount > 0}" class="totals-row">
+                <span class="totals-label">Tax (<span th:text="${invoice.taxRate}">0</span>%):</span>
+                <span class="totals-value">$<span th:text="${#numbers.formatDecimal(invoice.taxAmount, 1, 2)}">0.00</span></span>
+            </div>
+            <div class="grand-total totals-row">
+                <span class="totals-label">Total:</span>
+                <span class="totals-value">$<span th:text="${#numbers.formatDecimal(invoice.totalAmount, 1, 2)}">179.56</span></span>
+            </div>
+        </div>
+
+        <!-- Payment Info -->
+        <div class="payment-info">
+            <p><strong>Payment Method:</strong> <span th:text="${paymentMethod}">Visa ****1234</span></p>
+            <p><strong>Transaction ID:</strong> <span th:text="${transactionId}">ch_XXXXXXXXXXXXXXXXXXXXX</span></p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <p>Thank you for choosing SkyFlight!</p>
+        <p>This is a computer-generated document and does not require a signature.</p>
+    </div>
+</div>
+</body>
+</html>

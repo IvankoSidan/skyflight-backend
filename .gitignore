@@ -1,0 +1,75 @@
+### Gradle ###
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### Spring Boot ###
+# application configs (секреты, токены, ключи)
+src/main/resources/application.properties
+src/main/resources/application-*.yml
+src/main/resources/application-*.yaml
+src/main/resources/*.p12
+src/main/resources/*.jks
+src/main/resources/firebase-service-account.json
+# logs
+*.log
+spring.log
+
+# embedded DB files (например H2)
+*.db
+*.mv.db
+*.h2.db
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+
+### Kotlin ###
+.kotlin/
+
+### Coverage / Reports ###
+/coverage/
+/test-output/
+/reports/
+/jacoco.exec
+
+### System files ###
+.DS_Store
+Thumbs.db
+
+### Temp files ###
+*.tmp
+*.swp
+*.swo
+*.bak
+*~
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### Kotlin ###
+.kotlin
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/

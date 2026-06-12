@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>SkyFlight | Билет не найден</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        background: radial-gradient(circle at 20% 30%, #0F1422, #03050B);
+        font-family: 'Inter', sans-serif;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+
+    .error-container {
+        max-width: 450px;
+        width: 100%;
+        margin: 0 auto;
+    }
+
+    /* стеклянная карточка ошибки */
+    .glass-error {
+        background: rgba(20, 26, 42, 0.65);
+        backdrop-filter: blur(22px);
+        -webkit-backdrop-filter: blur(22px);
+        border-radius: 56px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        padding: 40px 28px 48px;
+        text-align: center;
+        box-shadow: 0 35px 50px -20px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255,255,255,0.08);
+        animation: floatGlow 0.5s ease-out;
+    }
+
+    @keyframes floatGlow {
+        from { opacity: 0; transform: scale(0.96);}
+        to { opacity: 1; transform: scale(1);}
+    }
+
+    .error-icon {
+        width: 100px;
+        height: 100px;
+        background: rgba(239, 68, 68, 0.2);
+        border-radius: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+        font-size: 54px;
+        color: #F87171;
+        border: 2px solid rgba(239, 68, 68, 0.4);
+        backdrop-filter: blur(8px);
+    }
+
+    h2 {
+        font-size: 28px;
+        font-weight: 800;
+        background: linear-gradient(135deg, #FFFFFF, #C4B5FD);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        margin-bottom: 12px;
+    }
+
+    .error-message {
+        font-size: 15px;
+        line-height: 1.45;
+        opacity: 0.8;
+        margin: 16px 0 32px;
+        padding: 0 8px;
+    }
+
+    .error-code {
+        background: rgba(255,255,255,0.08);
+        display: inline-block;
+        padding: 6px 18px;
+        border-radius: 60px;
+        font-size: 13px;
+        font-family: monospace;
+        margin-bottom: 32px;
+        letter-spacing: 1px;
+    }
+
+    .action-group {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 8px;
+    }
+
+    .btn-primary {
+        background: linear-gradient(105deg, #4A6BFF, #6C38FF);
+        border: none;
+        border-radius: 60px;
+        padding: 16px;
+        font-weight: 700;
+        font-size: 16px;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        cursor: pointer;
+        transition: 0.2s;
+        box-shadow: 0 8px 20px rgba(76, 67, 255, 0.3);
+    }
+
+    .btn-secondary {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 60px;
+        padding: 14px;
+        font-weight: 600;
+        color: #E2E8F0;
+        cursor: pointer;
+        transition: 0.2s;
+        backdrop-filter: blur(5px);
+    }
+
+    .btn-primary:active, .btn-secondary:active {
+        transform: scale(0.97);
+    }
+
+    .help-text {
+        margin-top: 32px;
+        font-size: 12px;
+        opacity: 0.5;
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+    }
+
+    .help-text i {
+        margin-right: 6px;
+    }
+
+    /* доп. анимация для планшета */
+    @media (max-width: 500px) {
+        .glass-error { padding: 32px 20px 40px; }
+    }
+  </style>
+</head>
+<body>
+<div class="error-container">
+  <div class="glass-error">
+    <div class="error-icon">
+      <i class="fas fa-ticket-alt"></i>
+    </div>
+    <h2>Ticket Not Found</h2>
+    <div class="error-message">
+      <span id="dynamicErrorMsg">The ticket you're looking for doesn't exist or has been removed.</span>
+    </div>
+    <div class="error-code">
+      <i class="fas fa-code-branch"></i> Error: 404 · TKT_MISSING
+    </div>
+
+    <div class="action-group">
+      <div class="btn-primary" id="goHomeBtn">
+        <i class="fas fa-home"></i> Go to SkyFlight
+      </div>
+      <div class="btn-secondary" id="contactSupportBtn">
+        <i class="fas fa-headset"></i> Contact Support
+      </div>
+    </div>
+
+    <div class="help-text">
+      <span><i class="fas fa-envelope"></i> support@skyflight.com</span>
+      <span><i class="fas fa-phone-alt"></i> +1 (888) 456-7890</span>
+    </div>
+  </div>
+
+  <!-- подсказка для имитации разных ошибок (можно через параметр ?error=expired) -->
+  <div style="text-align: center; margin-top: 20px; font-size: 11px; opacity: 0.35;">
+    <i class="fas fa-lock"></i> Secure connection · Report an issue
+  </div>
+</div>
+
+<script>
+  // поддержка параметра ошибки (пример: ?error=expired или ?error=invalid)
+  const urlError = new URLSearchParams(window.location.search).get('error');
+  const errorMsgSpan = document.getElementById('dynamicErrorMsg');
+  if (errorMsgSpan) {
+      if (urlError === 'expired') {
+          errorMsgSpan.innerText = 'This boarding pass has expired. Please check your upcoming trips.';
+      } else if (urlError === 'invalid') {
+          errorMsgSpan.innerText = 'Invalid ticket ID. The link may be broken or incorrect.';
+      } else {
+          errorMsgSpan.innerText = 'The ticket you\'re looking for doesn\'t exist or has been removed.';
+      }
+  }
+
+  // кнопки навигации
+  const homeBtn = document.getElementById('goHomeBtn');
+  const supportBtn = document.getElementById('contactSupportBtn');
+
+  function showNotification(msg) {
+      let snack = document.createElement('div');
+      snack.innerText = msg;
+      snack.style.position = 'fixed';
+      snack.style.bottom = '30px';
+      snack.style.left = '20px';
+      snack.style.right = '20px';
+      snack.style.backgroundColor = 'rgba(0,0,0,0.85)';
+      snack.style.backdropFilter = 'blur(20px)';
+      snack.style.borderRadius = '60px';
+      snack.style.padding = '12px 20px';
+      snack.style.textAlign = 'center';
+      snack.style.fontSize = '14px';
+      snack.style.fontWeight = '500';
+      snack.style.zIndex = '999';
+      snack.style.border = '1px solid rgba(255,255,255,0.2)';
+      document.body.appendChild(snack);
+      setTimeout(() => {
+          snack.style.opacity = '0';
+          setTimeout(() => snack.remove(), 400);
+      }, 2100);
+  }
+
+  if (homeBtn) {
+      homeBtn.addEventListener('click', () => {
+          // имитация перехода на главную страницу приложения
+          showNotification('✨ Redirecting to SkyFlight booking hub...');
+          setTimeout(() => {
+              window.location.href = 'https://skyflightbooking.ru';
+          }, 600);
+      });
+  }
+
+  if (supportBtn) {
+      supportBtn.addEventListener('click', () => {
+          showNotification('📞 Connecting to support chat (demo)');
+          // можно открыть модалку или почтовый клиент
+      });
+  }
+
+  // эмуляция поиска билета повторно (можно добавить анимацию)
+  console.log('ticket-error.html loaded | glassmorphic error page');
+</script>
+</body>
+</html>
