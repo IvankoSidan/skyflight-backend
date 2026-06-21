@@ -1,14 +1,17 @@
-name: Deploy Backend
+name: Deploy SkyFlight Backend
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -20,28 +23,86 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build JAR
-        run: ./gradlew clean bootJar -x test
+        run: ./gradlew clean bootJar -x test --no-daemon
 
-      - name: Copy JAR to VPS
-        uses: appleboy/scp-action@v0.1.4
+      - name: Create backup before deploy
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            mkdir -p /opt/skyflight/backups
+            if [ -f /opt/skyflight/app.jar ]; then
+              cp /opt/skyflight/app.jar /opt/skyflight/backups/app.jar.bak.$(date +%Y%m%d_%H%M%S)
+            fi
+            cd /opt/skyflight/backups
+            ls -t app.jar.bak.* 2>/dev/null | tail -n +6 | xargs -r rm -f
+            echo "✅ Backup created"
+
+      - name: Copy JAR to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
           source: "build/libs/*.jar"
           target: "/opt/skyflight/"
           strip_components: 2
+          overwrite: true
 
-      - name: Restart service
-        uses: appleboy/ssh-action@v0.1.5
+      - name: Deploy and restart
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
           script: |
-            sudo systemctl stop skyflight
-            sudo cp /opt/skyflight/*.jar /opt/skyflight/app.jar
-            sudo systemctl start skyflight
-            sleep 5
-            curl -s http://localhost:8080/api/health
-            echo "✅ Backend deployed!"
+            mv /opt/skyflight/build/libs/*.jar /opt/skyflight/app.jar
+            systemctl restart skyflight
+            sleep 15
+            
+            if curl -s http://localhost:8080/api/health | grep -q "HEALTHY"; then
+              echo "✅ Deployment successful!"
+            else
+              echo "❌ Health check failed! Rolling back..."
+              LATEST_BACKUP=$(ls -t /opt/skyflight/backups/app.jar.bak.* | head -1)
+              if [ -f "$LATEST_BACKUP" ]; then
+                cp "$LATEST_BACKUP" /opt/skyflight/app.jar
+                systemctl restart skyflight
+                echo "✅ Rollback completed"
+              else
+                echo "❌ No backup found!"
+                exit 1
+              fi
+            fi
+
+      - name: Telegram notification on success
+        if: success()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            🚀 SkyFlight Backend Deployed!
+            
+            📦 Version: ${{ github.sha }}
+            👤 Author: ${{ github.actor }}
+            📝 Commit: ${{ github.event.head_commit.message }}
+
+      - name: Telegram notification on failure
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ❌ SkyFlight Backend Deployment FAILED!
+            
+            📦 Version: ${{ github.sha }}
+            👤 Author: ${{ github.actor }}
+            
+            Please check GitHub Actions logs.
