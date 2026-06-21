@@ -2,7 +2,7 @@ name: Deploy SkyFlight Backend
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -37,9 +37,6 @@ jobs:
             if [ -f /opt/skyflight/app.jar ]; then
               cp /opt/skyflight/app.jar /opt/skyflight/backups/app.jar.bak.$(date +%Y%m%d_%H%M%S)
             fi
-            cd /opt/skyflight/backups
-            ls -t app.jar.bak.* 2>/dev/null | tail -n +6 | xargs -r rm -f
-            echo "✅ Backup created"
 
       - name: Copy JAR to VPS
         uses: appleboy/scp-action@v0.1.7
@@ -63,7 +60,7 @@ jobs:
           script: |
             mv /opt/skyflight/build/libs/*.jar /opt/skyflight/app.jar
             systemctl restart skyflight
-            sleep 15
+            sleep 10
             
             if curl -s http://localhost:8080/api/health | grep -q "HEALTHY"; then
               echo "✅ Deployment successful!"
@@ -79,30 +76,3 @@ jobs:
                 exit 1
               fi
             fi
-
-      - name: Telegram notification on success
-        if: success()
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: |
-            🚀 SkyFlight Backend Deployed!
-            
-            📦 Version: ${{ github.sha }}
-            👤 Author: ${{ github.actor }}
-            📝 Commit: ${{ github.event.head_commit.message }}
-
-      - name: Telegram notification on failure
-        if: failure()
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: |
-            ❌ SkyFlight Backend Deployment FAILED!
-            
-            📦 Version: ${{ github.sha }}
-            👤 Author: ${{ github.actor }}
-            
-            Please check GitHub Actions logs.
