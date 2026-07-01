@@ -1,8 +1,10 @@
 package com.wheezy.server.Service
 
 import com.wheezy.server.DTO.*
+import com.wheezy.server.Enums.PaymentStatus
 import com.wheezy.server.Models.Invoice
 import com.wheezy.server.Models.Promocode
+import com.wheezy.server.Models.TaxRate
 import com.wheezy.server.Repository.*
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
@@ -24,7 +26,7 @@ class InvoiceService(
     private val paymentRepository: PaymentRepository,
     private val promocodeRepository: PromocodeRepository,
     private val invoicePdfService: InvoicePdfService,
-    private val emailService: BrevoEmailService,
+    private val gmailEmailService: GmailApiService,
     private val emailTemplateService: EmailTemplateService
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -37,14 +39,11 @@ class InvoiceService(
         paymentId: Long,
         currency: String = "USD"
     ): Invoice {
-        // Проверяем, не существует ли уже инвойс
         val existingInvoice = invoiceRepository.findByBookingId(bookingId)
         if (existingInvoice.isPresent) {
-            log.info("Invoice already exists for booking $bookingId")
             return existingInvoice.get()
         }
 
-        // Получаем данные
         val booking = bookingRepository.findById(bookingId)
             .orElseThrow { IllegalArgumentException("Booking not found: $bookingId") }
 
@@ -57,13 +56,24 @@ class InvoiceService(
         val user = userRepository.findById(userId)
             .orElseThrow { IllegalArgumentException("User not found: $userId") }
 
-        // Получаем налоговую ставку по стране пользователя
+        if (payment.userId != userId)
+            throw IllegalStateException("Payment does not belong to this user")
+
+        if (payment.bookingId != bookingId)
+            throw IllegalStateException("Payment does not belong to this booking")
+
+        if (payment.status != PaymentStatus.SUCCEEDED)
+            throw IllegalStateException("Payment is not successful")
+
+        if (payment.currency != currency)
+            throw IllegalStateException("Payment currency mismatch: ${payment.currency} != $currency")
+
         val taxRate = getTaxRateForUser(user.email)
 
-        // Получаем данные о промокоде и рассчитываем скидку
+        val subtotal = flight.price.multiply(BigDecimal(booking.seatCount))
         var discountAmount = BigDecimal.ZERO
-        val promocodeId = booking.promocodeId // Сохраняем в локальную переменную
 
+        val promocodeId = booking.promocodeId
         if (promocodeId != null) {
             val promocode = promocodeRepository.findById(promocodeId).orElse(null)
             if (promocode != null) {
@@ -71,14 +81,34 @@ class InvoiceService(
             }
         }
 
-        // Рассчитываем суммы
-        val subtotal = flight.price.multiply(BigDecimal(booking.seatCount))
         val amountAfterDiscount = subtotal - discountAmount
         val taxAmount = amountAfterDiscount.multiply(taxRate.taxRate)
             .divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
         val totalAmount = amountAfterDiscount + taxAmount
 
-        // Генерируем номер инвойса
+        val paymentAmount = BigDecimal(payment.amount).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
+
+        if (paymentAmount.compareTo(totalAmount) != 0) {
+            log.warn("Payment amount {} does not match invoice total {}, using payment amount", paymentAmount, totalAmount)
+            val adjustedInvoice = Invoice(
+                userId = userId,
+                bookingId = bookingId,
+                paymentId = paymentId,
+                invoiceNumber = generateInvoiceNumber(),
+                issueDate = LocalDateTime.now(),
+                dueDate = LocalDateTime.now().plusDays(30),
+                currency = currency,
+                subtotal = paymentAmount,
+                discountAmount = BigDecimal.ZERO,
+                taxRate = taxRate.taxRate,
+                taxAmount = BigDecimal.ZERO,
+                totalAmount = paymentAmount,
+                status = "PAID"
+            )
+            val savedInvoice = invoiceRepository.save(adjustedInvoice)
+            return savedInvoice
+        }
+
         val invoiceNumber = generateInvoiceNumber()
 
         val invoice = Invoice(
@@ -87,7 +117,7 @@ class InvoiceService(
             paymentId = paymentId,
             invoiceNumber = invoiceNumber,
             issueDate = LocalDateTime.now(),
-            dueDate = LocalDateTime.now(),
+            dueDate = LocalDateTime.now().plusDays(30),
             currency = currency,
             subtotal = subtotal,
             discountAmount = discountAmount,
@@ -98,9 +128,7 @@ class InvoiceService(
         )
 
         val savedInvoice = invoiceRepository.save(invoice)
-        log.info("Invoice saved: ${savedInvoice.invoiceNumber}")
 
-        // Генерируем PDF и отправляем email
         try {
             generateAndSendInvoicePdf(savedInvoice)
         } catch (e: Exception) {
@@ -112,14 +140,23 @@ class InvoiceService(
 
     @Transactional
     fun generateAndSendInvoicePdf(invoice: Invoice) {
-        log.info("Generating PDF for invoice: ${invoice.invoiceNumber}")
+        val booking = bookingRepository.findById(invoice.bookingId).orElse(null) ?: run {
+            log.error("Booking not found for invoice ${invoice.invoiceNumber}")
+            return
+        }
 
-        val booking = bookingRepository.findById(invoice.bookingId).orElse(null) ?: return
-        val flight = flightRepository.findById(booking.flightId).orElse(null) ?: return
-        val user = userRepository.findById(invoice.userId).orElse(null) ?: return
+        val flight = flightRepository.findById(booking.flightId).orElse(null) ?: run {
+            log.error("Flight not found for invoice ${invoice.invoiceNumber}")
+            return
+        }
+
+        val user = userRepository.findById(invoice.userId).orElse(null) ?: run {
+            log.error("User not found for invoice ${invoice.invoiceNumber}")
+            return
+        }
+
         val payment = invoice.paymentId?.let { paymentRepository.findById(it).orElse(null) }
 
-        // Форматируем метод оплаты
         val paymentMethod = payment?.let {
             val last4 = if (it.providerPaymentId.length >= 4) {
                 it.providerPaymentId.takeLast(4)
@@ -132,10 +169,9 @@ class InvoiceService(
         val paymentLast4 = payment?.providerPaymentId?.takeLast(4) ?: "****"
         val transactionId = payment?.providerPaymentId ?: "N/A"
 
-        // Получаем промокод - используем локальную переменную
         var promocodeCode: String? = null
         var discountPercent: Int? = null
-        val promocodeId = booking.promocodeId // Сохраняем в локальную переменную
+        val promocodeId = booking.promocodeId
 
         if (promocodeId != null) {
             val promocode = promocodeRepository.findById(promocodeId).orElse(null)
@@ -143,17 +179,20 @@ class InvoiceService(
             discountPercent = promocode?.discountPercent
         }
 
-        // Получаем детали бронирования
         val bookingDetails = getBookingDetails(booking.id)
-
-        // Конвертируем Flight в FlightDTO
         val flightDTO = FlightDTO.fromEntity(flight)
+        val userResponse = UserResponseDto(
+            id = user.id!!,
+            email = user.email,
+            name = user.name,
+            profilePicture = user.profilePicture
+        )
 
         val invoiceData = InvoicePdfData(
             invoice = invoice,
             booking = bookingDetails,
             flight = flightDTO,
-            user = UserResponseDto(user.id!!, user.email, user.name, user.profilePicture),
+            user = userResponse,
             paymentMethod = paymentMethod,
             paymentLast4 = paymentLast4,
             transactionId = transactionId,
@@ -161,24 +200,118 @@ class InvoiceService(
             discountPercent = discountPercent
         )
 
-        val pdfStream = invoicePdfService.generateInvoicePdf(invoiceData)
-        val pdfPath = invoicePdfService.saveInvoicePdf(invoice, pdfStream)
+        try {
+            // ✅ ИСПРАВЛЕНО: проверяем на null перед использованием
+            val pdfStream = invoicePdfService.generateInvoicePdf(invoiceData)
+            if (pdfStream == null) {
+                log.error("Failed to generate PDF for invoice ${invoice.invoiceNumber}")
+                return
+            }
 
-        invoice.invoicePdfUrl = pdfPath
-        invoice.pdfGenerated = true
-        invoiceRepository.save(invoice)
+            val pdfPath = invoicePdfService.saveInvoicePdf(invoice, pdfStream)
+            if (pdfPath != null) {
+                invoice.invoicePdfUrl = pdfPath
+                invoice.pdfGenerated = true
+                invoiceRepository.save(invoice)
+                log.info("PDF saved at: $pdfPath")
+            } else {
+                log.error("Failed to save PDF for invoice ${invoice.invoiceNumber}")
+                return
+            }
 
-        // Отправляем email с PDF
-        sendInvoiceEmailWithAttachment(user, invoice, pdfStream)
+            // ✅ ИСПРАВЛЕНО: проверяем на null перед отправкой email
+            sendInvoiceEmailWithAttachment(user, invoice, pdfStream)
+
+        } catch (e: Exception) {
+            log.error("Failed to generate PDF for invoice ${invoice.invoiceNumber}", e)
+        }
     }
 
-    private fun getTaxRateForUser(email: String): com.wheezy.server.Models.TaxRate {
-        val countryCode = getCountryCodeFromEmail(email)
-        return taxRateRepository.findByCountryCode(countryCode)
-            .orElseGet {
-                taxRateRepository.findByIsDefaultTrue()
-                    .orElseThrow { IllegalStateException("No default tax rate found") }
+    fun getInvoiceByBookingId(userId: Long, bookingId: Long): Invoice? {
+        return invoiceRepository.findByBookingId(bookingId)
+            .filter { it.userId == userId }
+            .orElse(null)
+    }
+
+    fun getInvoiceById(userId: Long, invoiceId: Long): Invoice? {
+        return invoiceRepository.findById(invoiceId)
+            .filter { it.userId == userId }
+            .orElse(null)
+    }
+
+    fun getUserInvoices(userId: Long, page: Int, size: Int): InvoiceListResponse {
+        val pageable = PageRequest.of(page, size, Sort.by("issueDate").descending())
+        val pageResult = invoiceRepository.findByUserId(userId, pageable)
+
+        return InvoiceListResponse(
+            invoices = pageResult.content.map { invoice ->
+                InvoiceResponse.fromInvoice(invoice, "/api/invoices/${invoice.id}/download")
+            },
+            totalCount = pageResult.totalElements.toInt(),
+            totalPages = pageResult.totalPages,
+            currentPage = page
+        )
+    }
+
+    fun resendInvoiceEmail(userId: Long, bookingId: Long): Boolean {
+        val invoice = getInvoiceByBookingId(userId, bookingId) ?: return false
+        val user = userRepository.findById(userId).orElse(null) ?: return false
+
+        val pdfFile = invoicePdfService.getInvoicePdfFile(invoice.invoiceNumber)
+        if (pdfFile == null || !pdfFile.exists()) {
+            return try {
+                generateAndSendInvoicePdf(invoice)
+                true
+            } catch (e: Exception) {
+                log.error("Failed to regenerate PDF", e)
+                false
             }
+        }
+
+        return try {
+            val pdfBytes = pdfFile.readBytes()
+            val subject = "Your SkyFlight Invoice #${invoice.invoiceNumber}"
+            val htmlContent = emailTemplateService.invoiceEmail(user, invoice)
+
+            gmailEmailService.sendEmailWithAttachment(
+                to = user.email,
+                subject = subject,
+                htmlContent = htmlContent,
+                attachmentName = "${invoice.invoiceNumber}.pdf",
+                attachmentData = pdfBytes
+            )
+            true
+        } catch (e: Exception) {
+            log.error("Failed to resend invoice email", e)
+            false
+        }
+    }
+
+    private fun getTaxRateForUser(email: String): TaxRate {
+        val countryCode = getCountryCodeFromEmail(email)
+
+        taxRateRepository.findByCountryCode(countryCode).let {
+            if (it.isPresent) {
+                return it.get()
+            }
+        }
+
+        taxRateRepository.findByIsDefaultTrue().let {
+            if (it.isPresent) {
+                return it.get()
+            }
+        }
+
+        val defaultRate = TaxRate(
+            countryCode = "US",
+            countryName = "United States",
+            taxName = "Sales Tax",
+            taxRate = BigDecimal(0),
+            isDefault = true,
+            isActive = true,
+            createdAt = LocalDateTime.now()
+        )
+        return taxRateRepository.save(defaultRate)
     }
 
     private fun getCountryCodeFromEmail(email: String): String {
@@ -210,8 +343,6 @@ class InvoiceService(
 
     private fun calculateDiscountAmount(price: BigDecimal, seatCount: Int, promocode: Promocode): BigDecimal {
         val subtotal = price.multiply(BigDecimal(seatCount))
-
-        // Сохраняем значения в локальные переменные для safe cast
         val discountAmountValue = promocode.discountAmount
         val discountPercentValue = promocode.discountPercent
 
@@ -268,83 +399,16 @@ class InvoiceService(
             val subject = "Your SkyFlight Invoice #${invoice.invoiceNumber}"
             val htmlContent = emailTemplateService.invoiceEmail(user, invoice)
 
-            val success = emailService.sendEmailWithAttachment(
+            gmailEmailService.sendEmailWithAttachment(
                 to = user.email,
                 subject = subject,
                 htmlContent = htmlContent,
                 attachmentName = "${invoice.invoiceNumber}.pdf",
                 attachmentData = pdfStream.toByteArray()
             )
-
-            if (success) {
-                log.info("Invoice email sent to ${user.email} for invoice ${invoice.invoiceNumber}")
-            } else {
-                log.error("Failed to send invoice email to ${user.email}")
-            }
+            log.info("Invoice email sent to ${user.email}")
         } catch (e: Exception) {
             log.error("Failed to send invoice email", e)
-        }
-    }
-
-    fun getInvoiceByBookingId(userId: Long, bookingId: Long): Invoice? {
-        return invoiceRepository.findByBookingId(bookingId)
-            .filter { it.userId == userId }
-            .orElse(null)
-    }
-
-    fun getInvoiceById(userId: Long, invoiceId: Long): Invoice? {
-        return invoiceRepository.findById(invoiceId)
-            .filter { it.userId == userId }
-            .orElse(null)
-    }
-
-    fun getUserInvoices(userId: Long, page: Int, size: Int): InvoiceListResponse {
-        val pageable = PageRequest.of(page, size, Sort.by("issueDate").descending())
-        val pageResult = invoiceRepository.findByUserId(userId, pageable)
-
-        return InvoiceListResponse(
-            invoices = pageResult.content.map { invoice ->
-                InvoiceResponse.fromInvoice(invoice, "/api/invoices/${invoice.id}/download")
-            },
-            totalCount = pageResult.totalElements.toInt(),
-            totalPages = pageResult.totalPages,
-            currentPage = page
-        )
-    }
-
-    fun resendInvoiceEmail(userId: Long, bookingId: Long): Boolean {
-        val invoice = getInvoiceByBookingId(userId, bookingId) ?: return false
-        val user = userRepository.findById(userId).orElse(null) ?: return false
-
-        val pdfFile = invoicePdfService.getInvoicePdfFile(invoice.invoiceNumber)
-        if (pdfFile == null || !pdfFile.exists()) {
-            log.warn("PDF file not found for invoice ${invoice.invoiceNumber}, regenerating...")
-            return try {
-                generateAndSendInvoicePdf(invoice)
-                true
-            } catch (e: Exception) {
-                log.error("Failed to regenerate PDF", e)
-                false
-            }
-        }
-
-        return try {
-            val pdfBytes = pdfFile.readBytes()
-            val subject = "Your SkyFlight Invoice #${invoice.invoiceNumber}"
-            val htmlContent = emailTemplateService.invoiceEmail(user, invoice)
-
-            emailService.sendEmailWithAttachment(
-                to = user.email,
-                subject = subject,
-                htmlContent = htmlContent,
-                attachmentName = "${invoice.invoiceNumber}.pdf",
-                attachmentData = pdfBytes
-            )
-            log.info("Invoice email resent to ${user.email}")
-            true
-        } catch (e: Exception) {
-            log.error("Failed to resend invoice email", e)
-            false
         }
     }
 }

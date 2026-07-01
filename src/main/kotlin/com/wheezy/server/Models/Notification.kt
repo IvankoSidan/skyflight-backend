@@ -1,5 +1,6 @@
 package com.wheezy.server.Models
 
+import com.fasterxml.jackson.annotation.JsonFormat
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
@@ -13,6 +14,7 @@ data class Notification(
 
     val message: String,
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     val timestamp: LocalDateTime = LocalDateTime.now(),
 
     val isRead: Boolean = false

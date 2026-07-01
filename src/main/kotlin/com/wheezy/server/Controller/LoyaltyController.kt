@@ -1,6 +1,8 @@
 package com.wheezy.server.Controller
 
 import com.wheezy.server.DTO.*
+import com.wheezy.server.Enums.BookingStatus
+import com.wheezy.server.Models.PendingPointsHold
 import com.wheezy.server.Models.PointsTransaction
 import com.wheezy.server.Models.TierBenefit
 import com.wheezy.server.Repository.*
@@ -16,7 +18,8 @@ class LoyaltyController(
     private val pointsTransactionRepository: PointsTransactionRepository,
     private val tierBenefitRepository: TierBenefitRepository,
     private val userRepository: UserRepository,
-    private val bookingRepository: BookingRepository
+    private val bookingRepository: BookingRepository,
+    private val pendingPointsHoldRepository: PendingPointsHoldRepository
 ) {
 
     @GetMapping("/points")
@@ -72,7 +75,7 @@ class LoyaltyController(
                 amount = tx.amount,
                 type = tx.type,
                 description = tx.description,
-                createdAt = tx.createdAt.toString()
+                createdAt = tx.createdAt
             )
         })
     }
@@ -95,7 +98,7 @@ class LoyaltyController(
                 amount = tx.amount,
                 type = tx.type,
                 description = tx.description,
-                createdAt = tx.createdAt.toString()
+                createdAt = tx.createdAt
             )
         })
     }
@@ -132,68 +135,74 @@ class LoyaltyController(
     ): ResponseEntity<RedeemPointsResponse> {
         val user = userRepository.findByEmail(principal.name)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
         val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
 
         val userPoints = userPointsRepository.findByUserId(userId).orElse(null)
         if (userPoints == null || userPoints.balance < request.points) {
-            return ResponseEntity.badRequest().body(RedeemPointsResponse(
-                success = false,
-                discountAmount = 0,
-                remainingPoints = userPoints?.balance ?: 0,
-                message = "Not enough points"
-            ))
+            return ResponseEntity.badRequest().body(
+                RedeemPointsResponse(
+                    success = false,
+                    discountAmount = 0,
+                    remainingPoints = userPoints?.balance ?: 0,
+                    message = "Not enough points"
+                )
+            )
         }
 
         val booking = bookingRepository.findById(request.bookingId).orElse(null)
         if (booking == null || booking.userId != userId) {
-            return ResponseEntity.badRequest().body(RedeemPointsResponse(
-                success = false,
-                discountAmount = 0,
-                remainingPoints = userPoints.balance,
-                message = "Invalid booking"
-            ))
+            return ResponseEntity.badRequest().body(
+                RedeemPointsResponse(
+                    success = false,
+                    discountAmount = 0,
+                    remainingPoints = userPoints.balance,
+                    message = "Invalid booking"
+                )
+            )
         }
 
-        if (booking.status != com.wheezy.server.Enums.BookingStatus.PENDING_PAYMENT) {
-            return ResponseEntity.badRequest().body(RedeemPointsResponse(
-                success = false,
-                discountAmount = 0,
-                remainingPoints = userPoints.balance,
-                message = "Booking cannot be modified"
-            ))
+        if (booking.status != BookingStatus.PENDING_PAYMENT) {
+            return ResponseEntity.badRequest().body(
+                RedeemPointsResponse(
+                    success = false,
+                    discountAmount = 0,
+                    remainingPoints = userPoints.balance,
+                    message = "Booking cannot be modified"
+                )
+            )
         }
+
+        val existingHold = pendingPointsHoldRepository.findByBookingIdAndStatus(booking.id, "ACTIVE")
+        if (existingHold != null) {
+            return ResponseEntity.badRequest().body(
+                RedeemPointsResponse(
+                    success = false,
+                    discountAmount = 0,
+                    remainingPoints = userPoints.balance,
+                    message = "Points already reserved for this booking"
+                )
+            )
+        }
+
+        val hold = PendingPointsHold(
+            userId = userId,
+            bookingId = booking.id,
+            pointsHeld = request.points
+        )
+        pendingPointsHoldRepository.save(hold)
+
+        userPointsRepository.freezePoints(userId, request.points)
 
         val discountAmount = (request.points / 100) * 100L
 
-        // Используем deductPoints
-        val updated = userPointsRepository.deductPoints(userId, request.points)
-        if (updated == 0) {
-            return ResponseEntity.badRequest().body(RedeemPointsResponse(
-                success = false,
-                discountAmount = 0,
-                remainingPoints = userPoints.balance,
-                message = "Failed to deduct points"
-            ))
-        }
-
-        val transaction = PointsTransaction(
-            userId = userId,
-            amount = -request.points,
-            type = "REDEMPTION",
-            referenceId = request.bookingId,
-            description = "Used $request.points points for booking #${request.bookingId}"
+        return ResponseEntity.ok(
+            RedeemPointsResponse(
+                success = true,
+                discountAmount = discountAmount,
+                remainingPoints = userPoints.balance - request.points,
+                message = "Points reserved. Will be applied after successful payment."
+            )
         )
-        pointsTransactionRepository.save(transaction)
-
-        val newBalance = userPoints.balance - request.points
-
-        return ResponseEntity.ok(RedeemPointsResponse(
-            success = true,
-            discountAmount = discountAmount,
-            remainingPoints = newBalance,
-            message = "Points redeemed successfully"
-        ))
     }
 
     @GetMapping("/tiers")

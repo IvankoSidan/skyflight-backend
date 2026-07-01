@@ -20,7 +20,6 @@ class ThankYouScheduler(
     private val log = LoggerFactory.getLogger(javaClass)
     private val sentThankYou = mutableSetOf<String>()
 
-
     @Scheduled(cron = "0 0 10,18 * * ?")
     fun sendReviewReminders() {
         val yesterday = LocalDate.now().minusDays(1)
@@ -41,7 +40,6 @@ class ThankYouScheduler(
                             bookingId = booking.id,
                             flight = flight
                         )
-                        log.info("Review reminder sent for booking ${booking.id}")
                     } catch (e: Exception) {
                         log.error("Failed to send review reminder for booking ${booking.id}", e)
                     }
@@ -71,7 +69,6 @@ class ThankYouScheduler(
                             flight = flight
                         )
                         sentThankYou.add(key)
-                        log.info("Thank you notification sent for booking ${booking.id}")
                     } catch (e: Exception) {
                         log.error("Failed to send thank you for booking ${booking.id}", e)
                     }

@@ -14,14 +14,18 @@ class LocationService(
 
     private val logger = LoggerFactory.getLogger(LocationService::class.java)
 
-    @Cacheable(value = ["locations"], unless = "#result == null || #result.isEmpty()")
+    @Cacheable(value = ["locations"], key = "'all_locations'", unless = "#result == null || #result.isEmpty()")
     fun getAllLocations(): List<LocationModel> {
-        logger.info("🟢 Loading locations from DATABASE (cache miss)")
         return locationRepository.findAll()
     }
 
     @CacheEvict(value = ["locations"], allEntries = true)
     fun clearLocationsCache() {
-        logger.info("🗑️ Locations cache cleared")
+        logger.info("Locations cache cleared")
+    }
+
+    fun refreshLocations(): List<LocationModel> {
+        clearLocationsCache()
+        return getAllLocations()
     }
 }

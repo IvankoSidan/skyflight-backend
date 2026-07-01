@@ -1,5 +1,6 @@
 package com.wheezy.server.DTO
 
+import com.fasterxml.jackson.annotation.JsonFormat
 import com.wheezy.server.Models.Invoice
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -9,8 +10,13 @@ data class InvoiceResponse(
     val id: Long,
     val invoiceNumber: String,
     val bookingId: Long,
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     val issueDate: String,
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     val dueDate: String,
+
     val currency: String,
     val subtotal: BigDecimal,
     val discountAmount: BigDecimal,

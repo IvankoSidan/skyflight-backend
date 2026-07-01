@@ -1,5 +1,8 @@
 package com.wheezy.server.DTO
 
+import com.fasterxml.jackson.annotation.JsonFormat
+import java.time.LocalDateTime
+
 data class PointsBalanceResponse(
     val balance: Int,
     val lifetimePoints: Int,
@@ -14,7 +17,9 @@ data class PointsTransactionResponse(
     val amount: Int,
     val type: String,
     val description: String?,
-    val createdAt: String
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    val createdAt: LocalDateTime
 )
 
 data class RedeemPointsRequest(

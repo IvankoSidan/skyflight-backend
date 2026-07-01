@@ -26,13 +26,8 @@ class LoyaltyScheduler(
     @Scheduled(cron = "0 0 0 1 * ?")
     @Transactional
     fun recalculateAllTiersAndAwardBonus() {
-        log.info("Starting monthly loyalty recalculation")
-
-        // 1. Award monthly bonus for active users
         val awarded = loyaltyBonusService.awardMonthlyActivityBonus()
-        log.info("Awarded monthly bonus to $awarded users")
 
-        // 2. Recalculate tiers for all users based on lifetime_points
         val allTiers = tierBenefitRepository.findAllByOrderByMinPointsAsc()
         val users = userPointsRepository.findAll()
 
@@ -43,7 +38,6 @@ class LoyaltyScheduler(
         for (userPoints in users) {
             val newTier = determineTier(userPoints.lifetimePoints, allTiers)
             if (newTier != userPoints.tier) {
-                log.info("User ${userPoints.userId}: ${userPoints.tier} -> $newTier")
                 tierChanges.add(Triple(userPoints.userId, userPoints.tier, newTier))
                 userPoints.tier = newTier
                 userPoints.updatedAt = LocalDateTime.now()
@@ -54,7 +48,6 @@ class LoyaltyScheduler(
             }
         }
 
-        // 3. Send notifications for tier changes
         for ((userId, oldTier, newTier) in tierChanges) {
             try {
                 notificationSenderService.sendTierChangeNotification(userId, oldTier, newTier)
@@ -63,22 +56,16 @@ class LoyaltyScheduler(
             }
         }
 
-        // 4. Expire old points (12 months)
         expireOldPoints()
-
-        log.info("Tier recalculation completed: $promotedCount promoted, $demotedCount demoted")
     }
 
     @Scheduled(cron = "0 0 0 1 * ?")
     @Transactional
     fun expireOldPoints() {
-        log.info("Starting points expiration check")
-
         val oneYearAgo = LocalDateTime.now().minusMonths(12)
         val expiredTransactions = pointsTransactionRepository.findEarnedPointsOlderThan(oneYearAgo)
 
         if (expiredTransactions.isEmpty()) {
-            log.info("No points to expire")
             return
         }
 
@@ -106,12 +93,8 @@ class LoyaltyScheduler(
                 } catch (e: Exception) {
                     log.error("Failed to send points expiration notification to user $userId", e)
                 }
-
-                log.info("Expired $pointsToDeduct points for user $userId")
             }
         }
-
-        log.info("Points expiration completed: $totalExpired points expired")
     }
 
     private fun determineTier(points: Int, tiers: List<TierBenefit>): String {

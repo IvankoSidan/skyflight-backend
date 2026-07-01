@@ -1,9 +1,8 @@
 package com.wheezy.server.DTO
 
+import com.fasterxml.jackson.annotation.JsonFormat
 import java.math.BigDecimal
 import java.time.LocalDate
-
-// Добавьте в FlightDTO.kt:
 
 data class FlightDTO(
     val flightId: Long? = null,
@@ -11,7 +10,10 @@ data class FlightDTO(
     val airlineName: String,
     val arriveTime: String,
     val classSeat: String,
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     val flightDate: LocalDate,
+
     val departureCity: String,
     val departureShort: String,
     val totalSeats: Int,

@@ -21,4 +21,19 @@ interface UserPointsRepository : JpaRepository<UserPoints, Long> {
     @Transactional
     @Query("UPDATE UserPoints up SET up.balance = up.balance - :points WHERE up.userId = :userId AND up.balance >= :points")
     fun deductPoints(userId: Long, points: Int): Int
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE UserPoints up SET up.frozenBalance = up.frozenBalance + :points WHERE up.userId = :userId")
+    fun freezePoints(userId: Long, points: Int)
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE UserPoints up SET up.frozenBalance = up.frozenBalance - :points WHERE up.userId = :userId")
+    fun unfreezePoints(userId: Long, points: Int)
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE UserPoints up SET up.balance = up.balance - :points, up.frozenBalance = up.frozenBalance - :points WHERE up.userId = :userId AND up.frozenBalance >= :points")
+    fun confirmPointsDeduction(userId: Long, points: Int): Int
 }

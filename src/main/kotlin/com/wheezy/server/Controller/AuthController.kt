@@ -10,10 +10,10 @@ import com.wheezy.server.Security.JwtUtil
 import com.wheezy.server.Service.UserService
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.security.core.Authentication
-import org.springframework.web.bind.annotation.*
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.Authentication
+import org.springframework.web.bind.annotation.*
 
 @RestController
 @RequestMapping("/api/auth")
@@ -26,11 +26,12 @@ class AuthController(
     private val logger = LoggerFactory.getLogger(AuthController::class.java)
 
     @PostMapping("/register")
-    fun register(@RequestBody userRegisterDto: UserRegisterDto): ResponseEntity<UserResponseDto> {
+    fun register(@RequestBody userRegisterDto: UserRegisterDto): ResponseEntity<AuthResponse> {
         return try {
             val userResponse = userService.register(userRegisterDto)
-            ResponseEntity.ok(userResponse)
+            ResponseEntity.ok(AuthResponse(user = userResponse, token = ""))
         } catch (ex: IllegalArgumentException) {
+            logger.warn("Registration failed: ${ex.message}")
             ResponseEntity.badRequest().build()
         } catch (ex: Exception) {
             logger.error("Error during registration", ex)
@@ -39,12 +40,13 @@ class AuthController(
     }
 
     @PostMapping("/login")
-    fun login(@RequestBody userLoginDto: UserLoginDto): ResponseEntity<Map<String, Any?>> {
+    fun login(@RequestBody userLoginDto: UserLoginDto): ResponseEntity<AuthResponse> {
         return try {
             val (userResponse, token) = userService.login(userLoginDto)
-            ResponseEntity.ok(mapOf<String, Any?>("user" to userResponse, "token" to token))
+            ResponseEntity.ok(AuthResponse(user = userResponse, token = token))
         } catch (ex: IllegalArgumentException) {
-            ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(mapOf<String, Any?>("error" to ex.message))
+            logger.warn("Login failed: ${ex.message}")
+            ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         } catch (ex: Exception) {
             logger.error("Error during login", ex)
             ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
@@ -52,16 +54,19 @@ class AuthController(
     }
 
     @PostMapping("/google")
-    fun loginWithGoogle(@RequestBody request: GoogleAuthRequestDto): ResponseEntity<Map<String, Any?>> {
-        logger.info("Received Google login request")
-
+    fun loginWithGoogle(@RequestBody request: GoogleAuthRequestDto): ResponseEntity<AuthResponse> {
         val googleUser = validateAndParseGoogleIdToken(request.id_token)
-            ?: return ResponseEntity.badRequest().body(mapOf<String, Any?>("error" to "Invalid Google ID token"))
+        if (googleUser == null) {
+            logger.warn("Invalid Google ID token")
+            return ResponseEntity.badRequest().build()
+        }
 
         return try {
             val (userResponse, token) = userService.loginWithGoogle(googleUser)
-            logger.info("Google user authenticated: email=${googleUser.email}")
-            ResponseEntity.ok(mapOf<String, Any?>("user" to userResponse, "token" to token))
+            ResponseEntity.ok(AuthResponse(user = userResponse, token = token))
+        } catch (ex: IllegalStateException) {
+            logger.error("Failed to save Google user: ${ex.message}", ex)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         } catch (ex: Exception) {
             logger.error("Error during Google login", ex)
             ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
@@ -86,7 +91,12 @@ class AuthController(
                     val picture = payload["picture"] as? String
 
                     if (googleId != null && email != null) {
-                        GoogleUserDto(googleId = googleId, email = email, name = name, profilePicture = picture)
+                        GoogleUserDto(
+                            googleId = googleId,
+                            email = email,
+                            name = name,
+                            profilePicture = picture
+                        )
                     } else {
                         logger.warn("Google token payload missing required fields")
                         null
@@ -94,23 +104,32 @@ class AuthController(
                 }
             }
         } catch (ex: Exception) {
-            logger.error("Failed to validate Google ID token", ex)
+            logger.error("Failed to validate Google ID token: ${ex.message}", ex)
             null
         }
     }
 
-    private fun mapToResponseDto(user: User): UserResponseDto =
-        UserResponseDto(id = user.id ?: throw IllegalStateException("User ID cannot be null"), email = user.email, name = user.name, profilePicture = user.profilePicture)
-
     @GetMapping("/oauth2/success")
-    fun oauth2Success(@RequestParam token: String): ResponseEntity<Map<String, Any?>> {
-        val user = userService.findByEmail(jwtUtil.extractUsername(token)) ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-        return ResponseEntity.ok(mapOf<String, Any?>("user" to mapToResponseDto(user), "token" to token))
+    fun oauth2Success(@RequestParam token: String): ResponseEntity<AuthResponse> {
+        val user = userService.findByEmail(jwtUtil.extractUsername(token))
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        return ResponseEntity.ok(AuthResponse(user = mapToResponseDto(user), token = token))
     }
 
     @GetMapping("/me")
     fun getCurrentUser(authentication: Authentication): ResponseEntity<AuthResponse> {
-        val user = userService.findByEmail(authentication.name) ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        val user = userService.findByEmail(authentication.name)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
         return ResponseEntity.ok(AuthResponse(user = mapToResponseDto(user), token = ""))
     }
+
+    private fun mapToResponseDto(user: User): UserResponseDto =
+        UserResponseDto(
+            id = user.id ?: throw IllegalStateException("User ID cannot be null"),
+            email = user.email,
+            name = user.name,
+            profilePicture = user.profilePicture,
+            countryCode = user.countryCode,
+            taxRate = user.taxRate
+        )
 }

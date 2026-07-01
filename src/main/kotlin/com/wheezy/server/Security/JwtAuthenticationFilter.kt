@@ -40,17 +40,9 @@ class JwtAuthenticationFilter(
     ) {
         val authHeader = request.getHeader("Authorization")
 
-        if (request.method == "DELETE") {
-            logger.info("DELETE request to: ${request.requestURI}")
-        }
-
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             val token = authHeader.removePrefix("Bearer ").trim()
             val email = jwtUtil.extractUsername(token)
-
-            if (request.method == "DELETE") {
-                logger.info("Extracted email: $email")
-            }
 
             if (!email.isNullOrEmpty() && SecurityContextHolder.getContext().authentication == null) {
                 val user = userDetailsLoader.findByEmail(email)
@@ -61,17 +53,8 @@ class JwtAuthenticationFilter(
                     )
                     authToken.details = WebAuthenticationDetailsSource().buildDetails(request)
                     SecurityContextHolder.getContext().authentication = authToken
-                    if (request.method == "DELETE") {
-                        logger.info("✅ Authentication set for DELETE")
-                    }
-                } else {
-                    if (request.method == "DELETE") {
-                        logger.warn("❌ Authentication failed: user=${user?.email}, tokenValid=${jwtUtil.validateToken(token, email)}")
-                    }
                 }
             }
-        } else if (request.method == "DELETE") {
-            logger.warn("❌ No Authorization header for DELETE")
         }
 
         filterChain.doFilter(request, response)

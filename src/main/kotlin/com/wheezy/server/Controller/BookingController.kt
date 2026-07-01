@@ -3,18 +3,20 @@ package com.wheezy.server.Controller
 import com.wheezy.server.DTO.BookingDetailsDTO
 import com.wheezy.server.DTO.BookingRequestDTO
 import com.wheezy.server.DTO.BookingResponseDTO
+import com.wheezy.server.DTO.BookingStatusUpdateRequest
 import com.wheezy.server.Enums.BookingStatus
 import com.wheezy.server.Enums.PaymentStatus
-import com.wheezy.server.Models.Booking
 import com.wheezy.server.Repository.BookingRepository
 import com.wheezy.server.Repository.FlightRepository
 import com.wheezy.server.Repository.PaymentRepository
 import com.wheezy.server.Repository.PromocodeRepository
 import com.wheezy.server.Repository.UserRepository
+import com.wheezy.server.Service.BookingService
 import com.wheezy.server.Service.NotificationSenderService
 import com.wheezy.server.Service.PaymentService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
 import java.math.BigDecimal
 import java.security.Principal
@@ -30,7 +32,8 @@ class BookingController(
     private val paymentRepository: PaymentRepository,
     private val promocodeRepository: PromocodeRepository,
     private val paymentService: PaymentService,
-    private val notificationSenderService: NotificationSenderService
+    private val notificationSenderService: NotificationSenderService,
+    private val bookingService: BookingService
 ) {
 
     @PostMapping
@@ -38,31 +41,76 @@ class BookingController(
         principal: Principal,
         @RequestBody dto: BookingRequestDTO
     ): ResponseEntity<BookingResponseDTO> {
-
         val email = principal.name
         val user = userRepository.findByEmail(email)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-
-        val seatNumbers = dto.seatNumber.trim()
-        val seatCount = seatNumbers.split(",").map { it.trim() }.size
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
 
-        val booking = Booking(
+        if (!userRepository.existsById(userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        if (dto.promocodeId != null) {
+            val promocode = promocodeRepository.findById(dto.promocodeId).orElse(null)
+            if (promocode == null || !promocode.isActive) {
+                return ResponseEntity.badRequest().build()
+            }
+            if (promocode.validFrom.isAfter(LocalDateTime.now()) || promocode.validUntil.isBefore(LocalDateTime.now())) {
+                return ResponseEntity.badRequest().build()
+            }
+            val maxUses = promocode.maxUses
+            if (maxUses != null && promocode.usedCount >= maxUses) {
+                return ResponseEntity.badRequest().build()
+            }
+        }
+
+        val seatNumbers = dto.seatNumber.trim()
+        val seatList = seatNumbers.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        if (seatList.isEmpty()) {
+            return ResponseEntity.badRequest().build()
+        }
+
+        val result = bookingService.createBookingWithSeatLock(
             userId = userId,
             flightId = dto.flightId,
-            seatCount = seatCount,
             seatNumbers = seatNumbers,
-            status = BookingStatus.PENDING_PAYMENT,
-            bookingDate = LocalDateTime.now()
+            promocodeId = dto.promocodeId
         )
 
-        val saved = bookingRepository.save(booking)
+        return if (result.isSuccess) {
+            val booking = result.getOrThrow()
+            ResponseEntity.status(HttpStatus.CREATED)
+                .body(BookingResponseDTO(bookingId = booking.id))
+        } else {
+            val error = result.exceptionOrNull()
+            when (error) {
+                is IllegalStateException -> ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(BookingResponseDTO(bookingId = null))
+                else -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(BookingResponseDTO(bookingId = null))
+            }
+        }
+    }
 
-        notificationSenderService.sendBookingCreated(userId, saved.id)
-
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(BookingResponseDTO(bookingId = saved.id))
+    @GetMapping("/flight/{flightId}")
+    @PreAuthorize("permitAll()")
+    fun getBookedSeats(@PathVariable flightId: Long): ResponseEntity<List<String>> {
+        return try {
+            val flight = flightRepository.findById(flightId)
+            if (flight.isEmpty) {
+                return ResponseEntity.notFound().build()
+            }
+            val reservedSeats = flight.get().reservedSeats
+            val seats = if (reservedSeats.isNotEmpty()) {
+                reservedSeats.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            } else {
+                emptyList()
+            }
+            ResponseEntity.ok(seats)
+        } catch (e: Exception) {
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
     }
 
     @GetMapping("/my")
@@ -116,12 +164,38 @@ class BookingController(
         return ResponseEntity.ok(result)
     }
 
+    @PutMapping("/{bookingId}/status")
+    fun updateBookingStatus(
+        principal: Principal,
+        @PathVariable bookingId: Long,
+        @RequestBody request: BookingStatusUpdateRequest
+    ): ResponseEntity<Void> {
+        val user = userRepository.findByEmail(principal.name)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+
+        val booking = bookingRepository.findById(bookingId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        if (booking.userId != userId) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val result = bookingService.updateBookingStatus(bookingId, request.status)
+        if (result.isSuccess) {
+            notificationSenderService.sendBookingUpdate(userId, bookingId, request.status.name)
+            return ResponseEntity.ok().build()
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
+    }
+
     @PostMapping("/{id}/cancel")
     fun cancelBooking(
         principal: Principal,
         @PathVariable id: Long
     ): ResponseEntity<Void> {
-
         val email = principal.name
         val user = userRepository.findByEmail(email)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
@@ -139,12 +213,14 @@ class BookingController(
         }
 
         return try {
-            if (booking.status == BookingStatus.CONFIRMED) {
+            if (booking.status == BookingStatus.CONFIRMED || booking.status == BookingStatus.PAID) {
                 val refundSuccess = paymentService.refundBooking(booking.id, email)
                 if (!refundSuccess) {
                     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
                 }
             }
+
+            bookingService.releaseSeats(booking)
 
             booking.status = BookingStatus.CANCELED
             booking.canceledAt = LocalDateTime.now()
@@ -153,7 +229,6 @@ class BookingController(
             notificationSenderService.sendBookingCancelled(userId, booking.id)
 
             ResponseEntity.noContent().build()
-
         } catch (ex: Exception) {
             ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
@@ -183,7 +258,6 @@ class BookingController(
         try {
             paymentRepository.deleteByBookingId(id)
         } catch (e: Exception) {
-            // Log but continue
         }
 
         bookingRepository.deleteById(id)

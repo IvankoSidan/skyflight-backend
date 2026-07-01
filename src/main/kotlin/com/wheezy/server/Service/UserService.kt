@@ -12,14 +12,44 @@ import com.wheezy.server.Security.JwtUtil
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
 
 @Service
 class UserService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwtUtil: JwtUtil,
-    private val settingsRepository: UserNotificationSettingsRepository
+    private val settingsRepository: UserNotificationSettingsRepository,
+    private val notificationSenderService: NotificationSenderService
 ) {
+
+    private fun getCountryCodeFromEmail(email: String): String {
+        val domain = email.substringAfter("@").substringAfterLast(".")
+        return when (domain) {
+            "ru", "рф" -> "RU"
+            "ua" -> "UA"
+            "by" -> "BY"
+            "kz" -> "KZ"
+            "de" -> "DE"
+            "fr" -> "FR"
+            "uk" -> "GB"
+            "com", "net", "org" -> "US"
+            else -> "US"
+        }
+    }
+
+    private fun getTaxRateForCountry(countryCode: String): BigDecimal {
+        return when (countryCode) {
+            "RU" -> BigDecimal(20)
+            "UA" -> BigDecimal(20)
+            "BY" -> BigDecimal(20)
+            "KZ" -> BigDecimal(12)
+            "DE" -> BigDecimal(19)
+            "FR" -> BigDecimal(20)
+            "GB" -> BigDecimal(20)
+            else -> BigDecimal(0)
+        }
+    }
 
     @Transactional
     fun register(userRegisterDto: UserRegisterDto): UserResponseDto {
@@ -27,16 +57,23 @@ class UserService(
             throw IllegalArgumentException("Email already exists")
         }
 
+        val countryCode = getCountryCodeFromEmail(userRegisterDto.email)
+        val taxRate = getTaxRateForCountry(countryCode)
+
         val user = User(
             email = userRegisterDto.email,
             password = passwordEncoder.encode(userRegisterDto.password),
-            name = userRegisterDto.name
+            name = userRegisterDto.name,
+            countryCode = countryCode,
+            taxRate = taxRate
         )
         val savedUser = userRepository.save(user)
 
         val userId = savedUser.id ?: throw IllegalStateException("User ID cannot be null")
         val defaultSettings = NotificationSettingsDTO().toEntity(userId)
         settingsRepository.save(defaultSettings)
+
+        notificationSenderService.sendWelcomeEmail(userId)
 
         return mapToResponseDto(savedUser)
     }
@@ -63,25 +100,28 @@ class UserService(
 
     @Transactional
     fun loginWithGoogle(googleUserDto: GoogleUserDto): Pair<UserResponseDto, String> {
-        var user = userRepository.findByGoogleId(googleUserDto.googleId)
+        var user = userRepository.findByEmail(googleUserDto.email)
 
         if (user == null) {
-            user = userRepository.findByEmail(googleUserDto.email)
-            if (user == null) {
-                user = User(
-                    email = googleUserDto.email,
-                    googleId = googleUserDto.googleId,
-                    name = googleUserDto.name,
-                    profilePicture = googleUserDto.profilePicture
-                )
-                user = userRepository.save(user)
+            val countryCode = getCountryCodeFromEmail(googleUserDto.email)
+            val taxRate = getTaxRateForCountry(countryCode)
 
-                // Создаём настройки для нового пользователя
-                val userId = user.id ?: throw IllegalStateException("User ID cannot be null")
-                val defaultSettings = NotificationSettingsDTO().toEntity(userId)
-                settingsRepository.save(defaultSettings)
-            } else {
-                // Обновляем существующего пользователя Google ID
+            user = User(
+                email = googleUserDto.email,
+                googleId = googleUserDto.googleId,
+                name = googleUserDto.name,
+                profilePicture = googleUserDto.profilePicture,
+                countryCode = countryCode,
+                taxRate = taxRate
+            )
+            user = userRepository.save(user)
+
+            val userId = user.id ?: throw IllegalStateException("User ID cannot be null")
+            val defaultSettings = NotificationSettingsDTO().toEntity(userId)
+            settingsRepository.save(defaultSettings)
+
+        } else {
+            if (user.googleId == null || user.googleId != googleUserDto.googleId) {
                 val updatedUser = user.copy(googleId = googleUserDto.googleId)
                 user = userRepository.save(updatedUser)
             }
@@ -106,7 +146,9 @@ class UserService(
             id = user.id ?: throw IllegalStateException("User ID cannot be null"),
             email = user.email,
             name = user.name,
-            profilePicture = user.profilePicture
+            profilePicture = user.profilePicture,
+            countryCode = user.countryCode,
+            taxRate = user.taxRate
         )
     }
 }

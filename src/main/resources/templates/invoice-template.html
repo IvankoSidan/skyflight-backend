@@ -4,227 +4,656 @@
     <meta charset="UTF-8"/>
     <title>Invoice</title>
     <style>
+        /* ============================================
+           RESET
+           ============================================ */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
+
         body {
             font-family: 'Helvetica', 'Arial', sans-serif;
             font-size: 12px;
-            line-height: 1.4;
-            color: #333;
-            padding: 40px;
+            line-height: 1.5;
+            color: #333333;
+            background: #f0f2f8;
+            padding: 20px;
+            display: table;
+            width: 100%;
+            min-height: 100vh;
         }
+
         .invoice-container {
-            max-width: 800px;
+            max-width: 820px;
             margin: 0 auto;
-            border: 1px solid #ddd;
-            border-radius: 8px;
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
             overflow: hidden;
         }
-        .header {
-            background: linear-gradient(135deg, #4A6BFF, #6C38FF);
-            padding: 30px;
+
+        /* ============================================
+           HEADER
+           ============================================ */
+        .invoice-header {
+            background: #4A6BFF;
+            padding: 28px 32px;
             text-align: center;
-            color: white;
+            color: #ffffff;
+            position: relative;
         }
-        .header h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
-            letter-spacing: 2px;
+
+        .invoice-header-inner {
+            display: table;
+            width: 100%;
         }
-        .header p {
-            font-size: 12px;
-            opacity: 0.9;
+
+        .header-brand {
+            display: table-cell;
+            text-align: left;
+            vertical-align: middle;
         }
-        .content {
-            padding: 30px;
+
+        .header-brand h1 {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: 1px;
         }
-        .invoice-title {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
+
+        .header-brand p {
+            font-size: 11px;
+            opacity: 0.85;
+            margin: 2px 0;
+        }
+
+        .header-status {
+            display: table-cell;
+            text-align: right;
+            vertical-align: middle;
+        }
+
+        .status-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 6px 18px;
+            border-radius: 30px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+        }
+
+        .status-badge.status-paid {
+            background: #10B981;
+            border-color: #10B981;
+        }
+
+        .status-badge.status-pending {
+            background: #F59E0B;
+            border-color: #F59E0B;
+        }
+
+        .status-badge.status-overdue {
+            background: #EF4444;
+            border-color: #EF4444;
+        }
+
+        /* ============================================
+           BODY
+           ============================================ */
+        .invoice-body {
+            padding: 30px 32px;
+        }
+
+        /* ============================================
+           INVOICE TITLE
+           ============================================ */
+        .invoice-title-section {
+            display: table;
+            width: 100%;
+            margin-bottom: 24px;
+            padding-bottom: 18px;
             border-bottom: 2px solid #4A6BFF;
         }
-        .invoice-title h2 {
-            color: #4A6BFF;
-            font-size: 24px;
+
+        .title-left {
+            display: table-cell;
+            vertical-align: top;
+            text-align: left;
         }
-        .invoice-title .dates {
+
+        .title-left h2 {
+            color: #4A6BFF;
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .title-left .invoice-number {
+            font-size: 12px;
+            color: #666666;
+            margin-top: 4px;
+        }
+
+        .title-right {
+            display: table-cell;
+            vertical-align: top;
             text-align: right;
         }
-        .bill-to {
-            margin-bottom: 30px;
-            padding: 15px;
-            background: #f8f9fa;
+
+        .title-right .date-item {
+            font-size: 12px;
+            color: #555555;
+            margin: 3px 0;
+        }
+
+        .title-right .date-item strong {
+            color: #222222;
+        }
+
+        /* ============================================
+           BILL TO
+           ============================================ */
+        .bill-to-section {
+            background: #f8fafc;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            border-left: 4px solid #4A6BFF;
             border-radius: 6px;
         }
-        .bill-to h3 {
+
+        .bill-to-section h3 {
             color: #4A6BFF;
-            margin-bottom: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .bill-to-section .customer-name {
+            font-weight: 700;
             font-size: 14px;
+            color: #1a1a2e;
         }
-        .bill-to p {
-            margin: 5px 0;
+
+        .bill-to-section .customer-email {
+            font-size: 12px;
+            color: #666666;
+            margin-top: 2px;
         }
-        table {
+
+        /* ============================================
+           ITEMS TABLE
+           ============================================ */
+        .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin: 20px 0;
+            margin: 16px 0 20px;
+            font-size: 12px;
         }
-        th {
-            background: #f0f0f0;
-            padding: 12px;
+
+        .items-table thead th {
+            background: #f1f4f9;
+            padding: 10px 14px;
             text-align: left;
-            font-weight: bold;
-            border-bottom: 1px solid #ddd;
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #555555;
+            border-bottom: 2px solid #e2e8f0;
         }
-        td {
-            padding: 10px 12px;
-            border-bottom: 1px solid #eee;
+
+        .items-table tbody td {
+            padding: 12px 14px;
+            border-bottom: 1px solid #eef2f6;
+            vertical-align: top;
         }
-        .totals {
+
+        .items-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .items-table .text-right {
             text-align: right;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 2px solid #ddd;
         }
+
+        .items-table .text-center {
+            text-align: center;
+        }
+
+        .items-table .item-description strong {
+            display: block;
+            font-size: 13px;
+            color: #1a1a2e;
+            margin-bottom: 3px;
+        }
+
+        .items-table .item-description .flight-route {
+            font-size: 12px;
+            color: #555555;
+        }
+
+        .items-table .item-description .flight-detail {
+            font-size: 11px;
+            color: #888888;
+            margin-top: 4px;
+        }
+
+        .items-table .item-description .flight-detail span {
+            display: inline-block;
+            background: #f1f4f9;
+            padding: 1px 10px;
+            border-radius: 4px;
+            margin-right: 4px;
+            font-size: 10px;
+        }
+
+        /* ============================================
+           DISCOUNT
+           ============================================ */
+        .discount-section {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 6px;
+            padding: 10px 16px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .discount-section .discount-info {
+            float: left;
+            color: #92400e;
+            font-size: 12px;
+            padding-top: 3px;
+        }
+
+        .discount-section .discount-code {
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.6);
+            padding: 2px 12px;
+            border-radius: 4px;
+        }
+
+        .discount-section .discount-amount {
+            float: right;
+            font-weight: 700;
+            color: #92400e;
+            font-size: 14px;
+            padding-top: 3px;
+        }
+
+        .clearfix {
+            clear: both;
+        }
+
+        /* ============================================
+           TOTALS
+           ============================================ */
+        .totals-section {
+            text-align: right;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 2px solid #e2e8f0;
+        }
+
         .totals-row {
-            display: flex;
-            justify-content: flex-end;
-            margin: 5px 0;
+            overflow: hidden;
+            margin: 4px 0;
+            font-size: 12px;
         }
+
         .totals-label {
-            width: 150px;
-            font-weight: bold;
+            float: left;
+            width: 130px;
+            font-weight: 600;
+            text-align: right;
+            padding-right: 16px;
         }
+
         .totals-value {
-            width: 150px;
+            float: left;
+            width: 130px;
             text-align: right;
         }
+
+        .totals-row.discount .totals-value {
+            color: #EF4444;
+        }
+
         .grand-total {
-            font-size: 18px;
-            font-weight: bold;
+            font-size: 16px;
+            font-weight: 800;
             color: #4A6BFF;
-            margin-top: 10px;
+            margin-top: 8px;
             padding-top: 10px;
             border-top: 2px solid #4A6BFF;
         }
-        .payment-info {
-            margin: 20px 0;
-            padding: 15px;
-            background: #e8f0fe;
-            border-radius: 6px;
+
+        .grand-total .totals-label {
+            font-size: 16px;
         }
-        .footer {
-            background: #f8f9fa;
-            padding: 20px;
+
+        .grand-total .totals-value {
+            font-size: 18px;
+        }
+
+        /* ============================================
+           PAYMENT INFO
+           ============================================ */
+        .payment-info-section {
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            border-radius: 6px;
+            padding: 14px 18px;
+            margin: 16px 0 20px;
+            overflow: hidden;
+        }
+
+        .payment-info-section .payment-item {
+            font-size: 12px;
+            color: #333333;
+            margin: 3px 0;
+        }
+
+        .payment-info-section .payment-item strong {
+            color: #1a1a2e;
+        }
+
+        /* ============================================
+           NOTES
+           ============================================ */
+        .notes-section {
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px solid #eef2f6;
+        }
+
+        .notes-section .notes-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #888888;
+            margin-bottom: 4px;
+        }
+
+        .notes-section .notes-content {
+            font-size: 11px;
+            color: #666666;
+            line-height: 1.6;
+        }
+
+        /* ============================================
+           FOOTER
+           ============================================ */
+        .invoice-footer {
+            background: #f8fafc;
+            padding: 18px 32px;
             text-align: center;
             font-size: 10px;
-            color: #666;
-            border-top: 1px solid #ddd;
+            color: #888888;
+            border-top: 1px solid #e2e8f0;
         }
-        .status-paid {
-            display: inline-block;
-            background: #4CAF50;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: bold;
+
+        .invoice-footer p {
+            margin: 3px 0;
         }
+
+        /* ============================================
+           UTILITY
+           ============================================ */
         .text-right {
             text-align: right;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-muted {
+            color: #888888;
+        }
+
+        .fw-bold {
+            font-weight: 700;
+        }
+
+        .mt-2 { margin-top: 8px; }
+        .mb-2 { margin-bottom: 8px; }
+
+        /* ============================================
+           RESPONSIVE (для экрана, не для PDF)
+           ============================================ */
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            .invoice-body {
+                padding: 20px;
+            }
+
+            .invoice-header {
+                padding: 20px;
+            }
+
+            .header-brand,
+            .header-status {
+                display: block;
+                text-align: center;
+            }
+
+            .header-status {
+                margin-top: 10px;
+            }
+
+            .invoice-title-section {
+                display: block;
+            }
+
+            .title-left,
+            .title-right {
+                display: block;
+                text-align: center;
+            }
+
+            .title-right {
+                margin-top: 8px;
+            }
+
+            .items-table {
+                font-size: 11px;
+            }
+
+            .items-table thead th,
+            .items-table tbody td {
+                padding: 8px 10px;
+            }
+
+            .totals-label {
+                width: 100px;
+                padding-right: 10px;
+            }
+
+            .totals-value {
+                width: 100px;
+            }
+
+            .discount-section .discount-info,
+            .discount-section .discount-amount {
+                float: none;
+                text-align: center;
+                display: block;
+            }
+
+            .invoice-footer {
+                padding: 14px 20px;
+            }
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .invoice-container {
+                box-shadow: none;
+                border: 1px solid #ddd;
+                border-radius: 0;
+            }
+
+            .invoice-header {
+                background: #4A6BFF !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .status-badge {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .discount-section {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .payment-info-section {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .bill-to-section {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .items-table tbody tr:hover {
+                background: transparent;
+            }
+
+            .invoice-footer {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
         }
     </style>
 </head>
 <body>
+
 <div class="invoice-container">
-    <!-- Header -->
-    <div class="header">
-        <h1>SKYFLIGHT</h1>
-        <p>booking@skyflightbooking.ru</p>
-        <p>Tax ID: XXX-XXX-XXX</p>
+
+    <!-- ==========================================
+    HEADER
+    ========================================== -->
+    <div class="invoice-header">
+        <div class="invoice-header-inner">
+            <div class="header-brand">
+                <h1>SKYFLIGHT</h1>
+                <p>booking@skyflightbooking.ru</p>
+                <p>Tax ID: XXX-XXX-XXX</p>
+            </div>
+            <div class="header-status">
+                <span class="status-badge status-paid">PAID</span>
+            </div>
+        </div>
     </div>
 
-    <!-- Content -->
-    <div class="content">
-        <!-- Invoice Title -->
-        <div class="invoice-title">
-            <div>
+    <!-- ==========================================
+    BODY
+    ========================================== -->
+    <div class="invoice-body">
+
+        <!-- ==========================================
+        INVOICE TITLE
+        ========================================== -->
+        <div class="invoice-title-section">
+            <div class="title-left">
                 <h2>INVOICE</h2>
-                <p><span th:text="${invoice.invoiceNumber}">INV-20241225-00001</span></p>
+                <div class="invoice-number">
+                    <span th:text="${invoice.invoiceNumber}">INV-20241225-00001</span>
+                </div>
             </div>
-            <div class="dates">
-                <p><strong>Date:</strong> <span th:text="${issueDateFormatted}">Dec 25, 2024</span></p>
-                <p><strong>Due:</strong> <span th:text="${dueDateFormatted}">Dec 25, 2024</span></p>
-                <p><strong>Status:</strong> <span class="status-paid">PAID</span></p>
+            <div class="title-right">
+                <div class="date-item"><strong>Date:</strong> <span th:text="${issueDateFormatted}">Dec 25, 2024</span></div>
+                <div class="date-item"><strong>Due:</strong> <span th:text="${dueDateFormatted}">Dec 25, 2024</span></div>
             </div>
         </div>
 
-        <!-- Bill To -->
-        <div class="bill-to">
-            <h3>Bill To:</h3>
-            <p><strong><span th:text="${user.name}">John Doe</span></strong></p>
-            <p><span th:text="${user.email}">john.doe@example.com</span></p>
+        <!-- ==========================================
+        BILL TO
+        ========================================== -->
+        <div class="bill-to-section">
+            <h3>Bill To</h3>
+            <div class="customer-name"><span th:text="${user.name}">John Doe</span></div>
+            <div class="customer-email"><span th:text="${user.email}">john.doe@example.com</span></div>
         </div>
 
-        <!-- Items Table -->
-        <table>
+        <!-- ==========================================
+        ITEMS TABLE
+        ========================================== -->
+        <table class="items-table">
             <thead>
             <tr>
                 <th>Description</th>
-                <th class="text-right">Qty</th>
+                <th class="text-center">Qty</th>
                 <th class="text-right">Price</th>
                 <th class="text-right">Total</th>
             </tr>
             </thead>
             <tbody>
             <tr>
-                <td>
-                    <strong><span th:text="${flight.airlineName}">Airline</span></strong><br/>
-                    Flight: <span th:text="${flight.departureCity}">Moscow</span> →
-                    <span th:text="${flight.arrivalCity}">Sochi</span><br/>
-                    Date: <span th:text="${flight.flightDate}">2024-12-25</span><br/>
-                    Seats: <span th:text="${booking.seatNumbers}">A2, B3</span><br/>
-                    Class: <span th:text="${flight.classSeat}">Economy</span>
+                <td class="item-description">
+                    <strong th:text="${flight.airlineName}">SkyBound Airlines</strong>
+                    <div class="flight-route">
+                        <span th:text="${flight.departureCity}">Moscow</span> →
+                        <span th:text="${flight.arrivalCity}">Sochi</span>
+                    </div>
+                    <div class="flight-detail">
+                        <span th:text="${flight.flightDate}">2024-12-25</span>
+                        <span th:text="${flight.classSeat}">Economy</span>
+                        <span>Seats: <span th:text="${booking.seatNumbers}">A2, B3</span></span>
+                    </div>
                 </td>
-                <td class="text-right"><span th:text="${booking.seatCount}">2</span></td>
+                <td class="text-center"><span th:text="${booking.seatCount}">2</span></td>
                 <td class="text-right">$<span th:text="${#numbers.formatDecimal(flight.price, 1, 2)}">94.78</span></td>
                 <td class="text-right">$<span th:text="${#numbers.formatDecimal(invoice.subtotal, 1, 2)}">189.56</span></td>
             </tr>
             </tbody>
         </table>
 
-        <!-- Discount Section -->
-        <div th:if="${invoice.discountAmount > 0}">
-            <div class="totals-row">
-                <span class="totals-label">Discount:</span>
-                <span class="totals-value">-$<span th:text="${#numbers.formatDecimal(invoice.discountAmount, 1, 2)}">10.00</span></span>
+        <!-- ==========================================
+        DISCOUNT
+        ========================================== -->
+        <div th:if="${invoice.discountAmount > 0}" class="discount-section">
+            <div class="discount-info">
+                <span>Promocode applied:</span>
+                <span class="discount-code" th:text="${promocodeCode}">WELCOME10</span>
+                <span>(-<span th:text="${#numbers.formatDecimal(invoice.discountAmount, 1, 2)}">10.00</span>)</span>
             </div>
-            <div th:if="${promocodeCode}" class="totals-row">
-                <span class="totals-label">Promocode:</span>
-                <span class="totals-value"><span th:text="${promocodeCode}">WELCOME10</span></span>
+            <div class="discount-amount">
+                -$<span th:text="${#numbers.formatDecimal(invoice.discountAmount, 1, 2)}">10.00</span>
             </div>
+            <div class="clearfix"></div>
         </div>
 
-        <!-- Tax Section -->
-        <div th:if="${invoice.taxAmount > 0}">
-            <div class="totals-row">
-                <span class="totals-label"><span th:text="${taxName}">VAT</span> (<span th:text="${invoice.taxRate}">20</span>%):</span>
-                <span class="totals-value">$<span th:text="${#numbers.formatDecimal(invoice.taxAmount, 1, 2)}">0.00</span></span>
-            </div>
-        </div>
-
-        <!-- Totals -->
-        <div class="totals">
+        <!-- ==========================================
+        TOTALS
+        ========================================== -->
+        <div class="totals-section">
             <div class="totals-row">
                 <span class="totals-label">Subtotal:</span>
                 <span class="totals-value">$<span th:text="${#numbers.formatDecimal(invoice.subtotal, 1, 2)}">189.56</span></span>
             </div>
-            <div th:if="${invoice.discountAmount > 0}" class="totals-row">
+            <div th:if="${invoice.discountAmount > 0}" class="totals-row discount">
                 <span class="totals-label">Discount:</span>
                 <span class="totals-value">-$<span th:text="${#numbers.formatDecimal(invoice.discountAmount, 1, 2)}">10.00</span></span>
             </div>
@@ -232,24 +661,42 @@
                 <span class="totals-label">Tax (<span th:text="${invoice.taxRate}">0</span>%):</span>
                 <span class="totals-value">$<span th:text="${#numbers.formatDecimal(invoice.taxAmount, 1, 2)}">0.00</span></span>
             </div>
-            <div class="grand-total totals-row">
+            <div class="totals-row grand-total">
                 <span class="totals-label">Total:</span>
                 <span class="totals-value">$<span th:text="${#numbers.formatDecimal(invoice.totalAmount, 1, 2)}">179.56</span></span>
             </div>
         </div>
 
-        <!-- Payment Info -->
-        <div class="payment-info">
-            <p><strong>Payment Method:</strong> <span th:text="${paymentMethod}">Visa ****1234</span></p>
-            <p><strong>Transaction ID:</strong> <span th:text="${transactionId}">ch_XXXXXXXXXXXXXXXXXXXXX</span></p>
+        <!-- ==========================================
+        PAYMENT INFO
+        ========================================== -->
+        <div class="payment-info-section">
+            <div class="payment-item"><strong>Payment Method:</strong> <span th:text="${paymentMethod}">Visa ****1234</span></div>
+            <div class="payment-item"><strong>Transaction ID:</strong> <span th:text="${transactionId}">ch_XXXXXXXXXXXXXXXXXXXXX</span></div>
         </div>
+
+        <!-- ==========================================
+        NOTES
+        ========================================== -->
+        <div class="notes-section">
+            <div class="notes-title">Notes</div>
+            <div class="notes-content">
+                Thank you for choosing SkyFlight! This is a computer-generated document and does not require a signature.
+                For any questions, please contact support@skyflightbooking.ru
+            </div>
+        </div>
+
     </div>
 
-    <!-- Footer -->
-    <div class="footer">
+    <!-- ==========================================
+    FOOTER
+    ========================================== -->
+    <div class="invoice-footer">
         <p>Thank you for choosing SkyFlight!</p>
         <p>This is a computer-generated document and does not require a signature.</p>
     </div>
+
 </div>
+
 </body>
 </html>

@@ -1,33 +1,31 @@
-package com.wheezy.server.Сonfig
+package com.wheezy.server.Config
 
+import com.wheezy.server.Service.RateLimitServiceSimple
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 
 @Component
-class RateLimitingFilter : OncePerRequestFilter() {
+class RateLimitingFilter(
+    private val rateLimitService: RateLimitServiceSimple
+) : OncePerRequestFilter() {
 
-    companion object {
-        private const val RATE_LIMIT_PREFIX = "rate_limit:"
-    }
-
-    private val rateLimiter = ConcurrentHashMap<String, AtomicInteger>()
-
-    @Value("\${rate.limit.max-requests:100}")
-    private var maxRequests: Int = 100
+    @Value("\${rate.limit.enabled:true}")
+    private var rateLimitEnabled: Boolean = true
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         val path = request.requestURI
-        return path.startsWith("/api/health") ||
-                path.startsWith("/api/public/") ||
+        return !rateLimitEnabled ||
+                path.startsWith("/api/health") ||
+                path.startsWith("/actuator/health") ||
                 path.startsWith("/api/stripe/webhook") ||
                 path.startsWith("/webhook/telegram") ||
-                path.startsWith("/actuator/health")
+                path.startsWith("/ws") ||
+                path.startsWith("/v3/api-docs") ||
+                path.startsWith("/swagger-ui")
     }
 
     override fun doFilterInternal(
@@ -36,24 +34,20 @@ class RateLimitingFilter : OncePerRequestFilter() {
         filterChain: FilterChain
     ) {
         val clientIp = getClientIp(request)
-        val key = "$RATE_LIMIT_PREFIX$clientIp"
+        val path = request.requestURI
+        val limitType = getLimitType(path)
 
-        val counter = rateLimiter.computeIfAbsent(key) { AtomicInteger(0) }
-        val currentCount = counter.incrementAndGet()
+        val result = rateLimitService.tryConsume(clientIp, limitType)
 
-        // Reset after 1 minute
-        if (currentCount == 1) {
-            Thread {
-                Thread.sleep(60000)
-                rateLimiter.remove(key)
-            }.start()
-        }
+        // Исправлено: безопасное получение лимита
+        val limitConfig = rateLimitService.getLimitConfig(limitType)
+        val limitValue = limitConfig?.limit?.toString() ?: "100"
 
-        response.setHeader("X-RateLimit-Limit", maxRequests.toString())
-        response.setHeader("X-RateLimit-Remaining", (maxRequests - currentCount).toString())
-        response.setHeader("X-RateLimit-Reset", (System.currentTimeMillis() + 60000).toString())
+        response.setHeader("X-RateLimit-Limit", limitValue)
+        response.setHeader("X-RateLimit-Remaining", result.remainingTokens.toString())
+        response.setHeader("X-RateLimit-Reset", result.resetInSeconds.toString())
 
-        if (currentCount > maxRequests) {
+        if (!result.allowed) {
             response.status = 429
             response.contentType = "application/json"
             response.characterEncoding = "UTF-8"
@@ -62,6 +56,16 @@ class RateLimitingFilter : OncePerRequestFilter() {
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    private fun getLimitType(path: String): String {
+        return when {
+            path.contains("/auth") -> "auth"
+            path.contains("/bookings") -> "booking"
+            path.contains("/payments") -> "payment"
+            path.contains("/search") || path.contains("/flights") -> "search"
+            else -> "default"
+        }
     }
 
     private fun getClientIp(request: HttpServletRequest): String {

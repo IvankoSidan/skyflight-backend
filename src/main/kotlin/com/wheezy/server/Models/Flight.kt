@@ -38,7 +38,7 @@ data class Flight(
     val price: BigDecimal,
 
     @Column(name = "reserved_seats", columnDefinition = "TEXT")
-    val reservedSeats: String,
+    var reservedSeats: String = "",
 
     @Column(name = "departure_time", nullable = false)
     val departureTime: String,

@@ -45,7 +45,6 @@ class PaymentService(
         val payment = payments.firstOrNull()
 
         if (payment == null) {
-            log.info("No payment found for booking ${booking.id}, marking as canceled")
             booking.status = BookingStatus.CANCELED
             bookingRepository.save(booking)
             notificationSenderService.sendBookingUpdate(userId, booking.id, "CANCELLED")
@@ -53,7 +52,6 @@ class PaymentService(
         }
 
         if (payment.status != PaymentStatus.SUCCEEDED) {
-            log.info("Payment ${payment.id} is not succeeded, skipping refund")
             booking.status = BookingStatus.CANCELED
             bookingRepository.save(booking)
             notificationSenderService.sendBookingUpdate(userId, booking.id, "CANCELLED")
@@ -61,7 +59,6 @@ class PaymentService(
         }
 
         if (payment.status == PaymentStatus.REFUNDED) {
-            log.info("Payment already refunded: ${payment.id}")
             booking.status = BookingStatus.CANCELED
             bookingRepository.save(booking)
             return true
@@ -92,7 +89,6 @@ class PaymentService(
                 .build()
 
             val refund = Refund.create(params, requestOptions)
-            log.info("Refund created: ${refund.id} for booking ${booking.id}")
 
             payment.status = PaymentStatus.REFUNDED
             payment.refundId = refund.id
@@ -109,7 +105,6 @@ class PaymentService(
         } catch (e: com.stripe.exception.InvalidRequestException) {
             when {
                 e.code == "charge_already_refunded" -> {
-                    log.warn("Payment already refunded: ${payment.id}")
                     payment.status = PaymentStatus.REFUNDED
                     paymentRepository.save(payment)
                     booking.status = BookingStatus.CANCELED
@@ -117,7 +112,6 @@ class PaymentService(
                     true
                 }
                 e.code?.contains("no_successful_charge") == true -> {
-                    log.info("No successful charge for payment ${payment.id}")
                     payment.status = PaymentStatus.CANCELED
                     paymentRepository.save(payment)
                     booking.status = BookingStatus.CANCELED

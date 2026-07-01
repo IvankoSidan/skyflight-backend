@@ -1,5 +1,6 @@
 package com.wheezy.server.Models
 
+import com.fasterxml.jackson.annotation.JsonFormat
 import jakarta.persistence.*
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -23,9 +24,11 @@ data class Invoice(
     @Column(name = "invoice_number", nullable = false, unique = true)
     val invoiceNumber: String,
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     @Column(name = "issue_date", nullable = false)
     val issueDate: LocalDateTime = LocalDateTime.now(),
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     @Column(name = "due_date", nullable = false)
     val dueDate: LocalDateTime,
 
@@ -56,9 +59,11 @@ data class Invoice(
     @Column(name = "pdf_generated")
     var pdfGenerated: Boolean = false,
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     @Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     @Column(name = "updated_at", nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now()
 )

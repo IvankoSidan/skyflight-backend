@@ -1,5 +1,6 @@
 package com.wheezy.server.Models
 
+import com.fasterxml.jackson.annotation.JsonFormat
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
@@ -13,6 +14,8 @@ data class UserPoints(
     @Column(name = "lifetime_points")
     var lifetimePoints: Int = 0,
     var tier: String = "BRONZE",
+    @Column(name = "frozen_balance")
+    var frozenBalance: Int = 0,
     @Column(name = "updated_at")
     var updatedAt: LocalDateTime = LocalDateTime.now()
 )
@@ -23,13 +26,19 @@ data class PointsTransaction(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
+
     @Column(name = "user_id")
     val userId: Long,
+
     val amount: Int,
     val type: String,
+
     @Column(name = "reference_id")
     val referenceId: Long? = null,
+
     val description: String? = null,
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     @Column(name = "created_at")
     val createdAt: LocalDateTime = LocalDateTime.now()
 )

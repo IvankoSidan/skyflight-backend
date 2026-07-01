@@ -14,7 +14,6 @@ import java.time.LocalDate
 class ReminderScheduler(
     private val bookingRepository: BookingRepository,
     private val flightRepository: FlightRepository,
-    private val userRepository: UserRepository,
     private val notificationSenderService: NotificationSenderService
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -25,13 +24,9 @@ class ReminderScheduler(
         val tomorrow = LocalDate.now().plusDays(1)
         val flights = flightRepository.findByFlightDate(tomorrow)
 
-        log.info("Checking reminders for flights on $tomorrow. Found ${flights.size} flights.")
-
         for (flight in flights) {
             val bookings = bookingRepository.findByFlightId(flight.flightId)
             val confirmedBookings = bookings.filter { it.status == BookingStatus.CONFIRMED }
-
-            log.info("Flight ${flight.flightId} (${flight.departureCity}→${flight.arrivalCity}) has ${confirmedBookings.size} confirmed bookings.")
 
             for (booking in confirmedBookings) {
                 val reminderKey = "reminder_${booking.id}_${tomorrow}"
@@ -44,26 +39,20 @@ class ReminderScheduler(
                             flight = flight
                         )
                         sentReminders.add(reminderKey)
-                        log.info("Reminder sent for booking ${booking.id} (user ${booking.userId})")
                     } catch (e: Exception) {
                         log.error("Failed to send reminder for booking ${booking.id}", e)
                     }
-                } else {
-                    log.debug("Reminder already sent for booking ${booking.id}")
                 }
             }
         }
 
         if (sentReminders.size > 1000) {
-            log.info("Clearing reminder cache (size: ${sentReminders.size})")
             sentReminders.clear()
         }
     }
 
     @Scheduled(cron = "0 0 3 * * ?")
     fun cleanReminderCache() {
-        val oldSize = sentReminders.size
         sentReminders.clear()
-        log.info("Cleared reminder cache. Removed $oldSize entries.")
     }
 }

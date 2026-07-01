@@ -1,5 +1,7 @@
 package com.wheezy.server.DTO
 
+import com.fasterxml.jackson.annotation.JsonFormat
+
 data class ReferralCodeResponse(
     val code: String,
     val usageCount: Int,
@@ -29,6 +31,9 @@ data class ReferralInfoResponse(
 data class ReferredUser(
     val email: String,
     val name: String?,
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     val registeredAt: String,
+
     val status: String
 )

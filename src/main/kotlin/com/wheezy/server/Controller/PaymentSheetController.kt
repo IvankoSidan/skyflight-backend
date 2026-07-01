@@ -14,6 +14,7 @@ import com.wheezy.server.Enums.BookingStatus
 import com.wheezy.server.Enums.PaymentStatus
 import com.wheezy.server.Models.Payment
 import com.wheezy.server.Repository.BookingRepository
+import com.wheezy.server.Repository.FlightRepository
 import com.wheezy.server.Repository.PaymentRepository
 import com.wheezy.server.Repository.PromocodeRepository
 import com.wheezy.server.Repository.SavedCardRepository
@@ -23,6 +24,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.math.BigDecimal
 import java.security.Principal
 
 @RestController
@@ -32,6 +34,7 @@ class PaymentSheetController(
     @Value("\${stripe.publishable-key}") private val publishableKey: String,
     private val userRepository: UserRepository,
     private val bookingRepository: BookingRepository,
+    private val flightRepository: FlightRepository,
     private val paymentRepository: PaymentRepository,
     private val promocodeRepository: PromocodeRepository,
     private val savedCardRepository: SavedCardRepository
@@ -49,43 +52,64 @@ class PaymentSheetController(
         principal: Principal?
     ): ResponseEntity<PaymentSheetResponse> {
         val startTime = System.currentTimeMillis()
-        log.info("🚀 START: Creating Payment Sheet for bookingId: ${request.bookingId}, amount: ${request.amount}")
 
         try {
             val user = principal?.let { userRepository.findByEmail(it.name) }
                 ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
             val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
-            log.info("✅ User found: ${user.email} (id=$userId)")
 
             val booking = bookingRepository.findById(request.bookingId).orElse(null)
                 ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
 
             if (booking.userId != userId || booking.status != BookingStatus.PENDING_PAYMENT) {
-                log.error("❌ Access denied for booking: ${booking.id}")
+                log.error("Access denied for booking: ${booking.id}")
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
             }
-            log.info("✅ Booking verified: id=${booking.id}, status=${booking.status}")
 
-            if (request.promocodeId != null) {
-                val promocode = promocodeRepository.findById(request.promocodeId).orElse(null)
-                if (promocode == null || !promocode.isActive) {
-                    log.error("❌ Invalid promocode id: ${request.promocodeId}")
-                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).build()
+            val currentFlight = flightRepository.findById(booking.flightId).orElse(null)
+            if (currentFlight == null) {
+                log.error("Flight not found: ${booking.flightId}")
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+            }
+
+            var finalExpectedAmount = currentFlight.price
+                .multiply(BigDecimal(booking.seatCount))
+                .multiply(BigDecimal(100))
+                .toLong()
+
+            val promocodeId = request.promocodeId ?: booking.promocodeId
+            var appliedPromocodeId: Long? = null
+
+            if (promocodeId != null) {
+                val promocode = promocodeRepository.findById(promocodeId).orElse(null)
+                if (promocode != null && promocode.isActive) {
+                    val discountPercent = promocode.discountPercent
+                    val discountAmount = promocode.discountAmount
+
+                    finalExpectedAmount = when {
+                        discountAmount != null -> {
+                            val discounted = finalExpectedAmount - discountAmount
+                            discounted.coerceAtLeast(0)
+                        }
+                        discountPercent != null && discountPercent > 0 -> {
+                            val discounted = finalExpectedAmount - (finalExpectedAmount * discountPercent / 100)
+                            discounted.coerceAtLeast(0)
+                        }
+                        else -> finalExpectedAmount
+                    }
+                    appliedPromocodeId = promocodeId
                 }
+            }
 
-                val minOrderAmount = promocode.minOrderAmount
-                if (minOrderAmount != null && request.amount < minOrderAmount) {
-                    log.error("❌ Minimum order amount not met: ${request.amount} < $minOrderAmount")
-                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).build()
-                }
-
-                log.info("✅ Promocode validated: ${promocode.code}")
+            val amountToUse = if (request.amount > 0) {
+                request.amount
+            } else {
+                finalExpectedAmount
             }
 
             var customerId = user.stripeCustomerId
             if (customerId == null) {
-                log.info("🔄 Creating new Stripe customer...")
                 try {
                     val options = RequestOptions.builder()
                         .setConnectTimeout(30000)
@@ -102,40 +126,35 @@ class PaymentSheetController(
                     customerId = customer.id
                     user.stripeCustomerId = customerId
                     userRepository.save(user)
-                    log.info("✅ Created new Stripe customer: $customerId")
                 } catch (e: Exception) {
-                    log.error("❌ Failed to create Stripe customer: ${e.message}", e)
+                    log.error("Failed to create Stripe customer: ${e.message}", e)
                     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
                 }
-            } else {
-                log.info("✅ Existing Stripe customer: $customerId")
             }
 
-            log.info("🔑 Creating ephemeral key...")
             val ephemeralKeyParams = EphemeralKeyCreateParams.builder()
                 .setStripeVersion("2023-10-16")
                 .setCustomer(customerId)
                 .build()
 
             val ephemeralKey = EphemeralKey.create(ephemeralKeyParams)
-            log.info("✅ Ephemeral key created")
 
             val payment = paymentRepository.save(
                 Payment(
                     userId = userId,
                     bookingId = booking.id,
                     flightId = booking.flightId,
-                    amount = request.amount,
+                    amount = amountToUse,
                     currency = request.currency,
                     providerPaymentId = "temp_pi_${booking.id}_${System.currentTimeMillis()}",
                     status = PaymentStatus.PENDING,
-                    promocodeId = request.promocodeId
+                    promocodeId = appliedPromocodeId,
+                    rememberCard = request.saveCard
                 )
             )
-            log.info("✅ Payment saved: id=${payment.id}")
 
             val intentParams = PaymentIntentCreateParams.builder()
-                .setAmount(request.amount)
+                .setAmount(amountToUse)
                 .setCurrency(request.currency.lowercase())
                 .setCustomer(customerId)
                 .putMetadata("payment_id", payment.id.toString())
@@ -143,8 +162,11 @@ class PaymentSheetController(
                 .putMetadata("user_id", userId.toString())
                 .putMetadata("user_email", user.email)
                 .apply {
-                    if (request.promocodeId != null) {
-                        putMetadata("promocode_id", request.promocodeId.toString())
+                    if (appliedPromocodeId != null) {
+                        putMetadata("promocode_id", appliedPromocodeId.toString())
+                    }
+                    if (request.saveCard) {
+                        putMetadata("save_card", "true")
                     }
                 }
                 .setAutomaticPaymentMethods(
@@ -160,26 +182,20 @@ class PaymentSheetController(
                 .setIdempotencyKey("payment_${payment.id}_${System.currentTimeMillis()}")
                 .build()
 
-            log.info("🔗 Calling Stripe API to create PaymentIntent (timeout: 60s)...")
             val intent = PaymentIntent.create(intentParams, requestOptions)
-            val elapsed = System.currentTimeMillis() - startTime
-            log.info("✅ PaymentIntent created in ${elapsed}ms: ${intent.id}")
 
             payment.providerPaymentId = intent.id
             payment.stripePaymentId = intent.id
             payment.status = PaymentStatus.valueOf(intent.status.uppercase())
             paymentRepository.save(payment)
 
-            if (request.promocodeId != null) {
+            if (appliedPromocodeId != null) {
                 try {
-                    promocodeRepository.incrementUsageCount(request.promocodeId)
-                    log.info("✅ Promocode usage count incremented for id: ${request.promocodeId}")
+                    promocodeRepository.incrementUsageCount(appliedPromocodeId)
                 } catch (e: Exception) {
-                    log.error("⚠️ Failed to increment promocode usage count: ${e.message}", e)
+                    log.error("Failed to increment promocode usage count: ${e.message}", e)
                 }
             }
-
-            log.info("✅✅✅ SUCCESS! Total time: ${System.currentTimeMillis() - startTime}ms")
 
             return ResponseEntity.ok(
                 PaymentSheetResponse(
@@ -191,14 +207,10 @@ class PaymentSheetController(
             )
 
         } catch (e: com.stripe.exception.StripeException) {
-            val elapsed = System.currentTimeMillis() - startTime
-            log.error("❌❌❌ STRIPE ERROR after ${elapsed}ms: ${e.message}", e)
-            log.error("Stripe error code: ${e.code}, status code: ${e.statusCode}")
+            log.error("STRIPE ERROR: ${e.message}", e)
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         } catch (e: Exception) {
-            val elapsed = System.currentTimeMillis() - startTime
-            log.error("❌❌❌ FATAL ERROR after ${elapsed}ms: ${e.message}", e)
-            e.printStackTrace()
+            log.error("FATAL ERROR: ${e.message}", e)
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
     }

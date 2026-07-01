@@ -1,7 +1,6 @@
 package com.wheezy.server.DTO
 
 data class AuthResponse(
-    val user: UserResponseDto,
-    val token: String
+    val user: UserResponseDto? = null,
+    val token: String? = null
 )
-

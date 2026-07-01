@@ -1,16 +1,21 @@
 package com.wheezy.server.Config
 
+import com.wheezy.server.Security.AuthChannelInterceptor
 import org.springframework.context.annotation.Configuration
+import org.springframework.messaging.simp.config.ChannelRegistration
 import org.springframework.messaging.simp.config.MessageBrokerRegistry
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer
 import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration
+import org.springframework.web.socket.server.support.DefaultHandshakeHandler
 
 @Configuration
 @EnableWebSocketMessageBroker
-class WebSocketConfig : WebSocketMessageBrokerConfigurer {
+class WebSocketConfig(
+    private val authChannelInterceptor: AuthChannelInterceptor
+) : WebSocketMessageBrokerConfigurer {
 
     override fun configureMessageBroker(registry: MessageBrokerRegistry) {
         val taskScheduler = ThreadPoolTaskScheduler().apply {
@@ -36,8 +41,7 @@ class WebSocketConfig : WebSocketMessageBrokerConfigurer {
                 "http://localhost:3000",
                 "http://89.108.81.227:8080"
             )
-            .withSockJS()
-            .setClientLibraryUrl("https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js")
+            .setHandshakeHandler(DefaultHandshakeHandler())
     }
 
     override fun configureWebSocketTransport(registration: WebSocketTransportRegistration) {
@@ -46,5 +50,9 @@ class WebSocketConfig : WebSocketMessageBrokerConfigurer {
             .setSendTimeLimit(120_000)
             .setSendBufferSizeLimit(512 * 1024)
             .setTimeToFirstMessage(120_000)
+    }
+
+    override fun configureClientInboundChannel(registration: ChannelRegistration) {
+        registration.interceptors(authChannelInterceptor)
     }
 }

@@ -6,6 +6,7 @@ import com.wheezy.server.Repository.BookingRepository
 import com.wheezy.server.Repository.FlightRepository
 import com.wheezy.server.Repository.ReviewRepository
 import com.wheezy.server.Repository.UserRepository
+import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.http.HttpStatus
@@ -24,35 +25,50 @@ class ReviewController(
     private val userRepository: UserRepository
 ) {
 
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    @GetMapping("/")
+    fun root(): ResponseEntity<Map<String, String>> {
+        return ResponseEntity.ok(mapOf("message" to "Reviews API is working"))
+    }
+
     @PostMapping
     fun createReview(
         principal: Principal,
         @RequestBody request: CreateReviewRequest
     ): ResponseEntity<ReviewResponse> {
+        log.info("📝 CREATE REVIEW: bookingId=${request.bookingId}, rating=${request.rating}")
+
         val user = userRepository.findByEmail(principal.name)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
 
         val booking = bookingRepository.findById(request.bookingId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-
-        if (booking.userId != userId) {
+        if (booking == null || booking.userId != userId) {
+            log.warn("❌ Booking not found or not owned: ${request.bookingId}")
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
         val flight = flightRepository.findById(booking.flightId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        if (flight == null) {
+            log.warn("❌ Flight not found: ${booking.flightId}")
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        }
 
-        if (flight.flightDate.isAfter(LocalDate.now())) {
+        val canReviewDate = flight.flightDate.minusDays(1)
+        if (canReviewDate.isAfter(LocalDate.now())) {
+            log.warn("❌ Flight not departed yet: ${flight.flightDate}")
             return ResponseEntity.badRequest().build()
         }
 
         if (reviewRepository.existsByBookingId(request.bookingId)) {
+            log.warn("❌ Review already exists for booking: ${request.bookingId}")
             return ResponseEntity.status(HttpStatus.CONFLICT).build()
         }
 
         if (request.rating !in 1..5) {
+            log.warn("❌ Invalid rating: ${request.rating}")
             return ResponseEntity.badRequest().build()
         }
 
@@ -66,9 +82,136 @@ class ReviewController(
         )
 
         val saved = reviewRepository.save(review)
+        log.info("✅ Review created: id=${saved.id}, flightId=${saved.flightId}")
 
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(saved.toResponse(user.name, canEdit = true))
+    }
+
+    @GetMapping("/can-review/{bookingId}")
+    fun canReview(
+        principal: Principal,
+        @PathVariable bookingId: Long
+    ): ResponseEntity<Map<String, Boolean>> {
+        val user = userRepository.findByEmail(principal.name)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+
+        val booking = bookingRepository.findById(bookingId).orElse(null)
+        if (booking == null || booking.userId != userId) {
+            return ResponseEntity.ok(mapOf("canReview" to false))
+        }
+
+        val flight = flightRepository.findById(booking.flightId).orElse(null)
+        if (flight == null) {
+            return ResponseEntity.ok(mapOf("canReview" to false))
+        }
+
+        val canReviewDate = flight.flightDate.minusDays(1)
+        val flightPassed = !canReviewDate.isAfter(LocalDate.now())
+        val hasReview = reviewRepository.existsByBookingId(bookingId)
+
+        log.info("📝 canReview: bookingId=$bookingId, flightDate=${flight.flightDate}, flightPassed=$flightPassed, hasReview=$hasReview")
+
+        return ResponseEntity.ok(mapOf("canReview" to (flightPassed && !hasReview)))
+    }
+
+    @GetMapping("/flight/{flightId}")
+    fun getFlightReviews(@PathVariable flightId: Long): ResponseEntity<List<ReviewResponse>> {
+        log.info("📝 GET FLIGHT REVIEWS: flightId=$flightId")
+
+        val reviews = reviewRepository.findByFlightIdAndIsHiddenFalse(flightId)
+
+        log.info("✅ Found ${reviews.size} reviews for flight $flightId")
+        reviews.forEach { review ->
+            log.info("   Review: id=${review.id}, rating=${review.rating}, userId=${review.userId}")
+        }
+
+        return ResponseEntity.ok(reviews.map { review ->
+            val user = userRepository.findById(review.userId).orElse(null)
+            review.toResponse(user?.name, canEdit = false)
+        })
+    }
+
+    @GetMapping("/flight/{flightId}/paginated")
+    fun getFlightReviewsPaginated(
+        @PathVariable flightId: Long,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int
+    ): ResponseEntity<Map<String, Any>> {
+        log.info("📝 GET FLIGHT REVIEWS PAGINATED: flightId=$flightId, page=$page, size=$size")
+
+        val pageable = PageRequest.of(page, size, Sort.by("createdAt").descending())
+        val reviewsPage = reviewRepository.findByFlightIdAndIsHiddenFalse(flightId, pageable)
+
+        log.info("✅ Found ${reviewsPage.content.size} reviews, total=${reviewsPage.totalElements}")
+
+        val response = mapOf(
+            "reviews" to reviewsPage.content.map { review ->
+                val user = userRepository.findById(review.userId).orElse(null)
+                review.toResponse(user?.name, canEdit = false)
+            },
+            "currentPage" to reviewsPage.number,
+            "totalPages" to reviewsPage.totalPages,
+            "totalItems" to reviewsPage.totalElements
+        )
+        return ResponseEntity.ok(response)
+    }
+
+    @GetMapping("/airline/{airlineName}")
+    fun getAirlineRating(@PathVariable airlineName: String): ResponseEntity<AirlineRatingResponse> {
+        log.info("📝 GET AIRLINE RATING: airlineName=$airlineName")
+
+        val reviews = reviewRepository.findByAirlineNameAndIsHiddenFalse(airlineName)
+
+        log.info("✅ Found ${reviews.size} reviews for airline $airlineName")
+        return ResponseEntity.ok(reviews.toAirlineRatingResponse(airlineName))
+    }
+
+    @GetMapping("/airline/{airlineName}/paginated")
+    fun getAirlineRatingPaginated(
+        @PathVariable airlineName: String,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int
+    ): ResponseEntity<Map<String, Any>> {
+        log.info("📝 GET AIRLINE REVIEWS PAGINATED: airlineName=$airlineName, page=$page, size=$size")
+
+        val pageable = PageRequest.of(page, size, Sort.by("createdAt").descending())
+        val reviewsPage = reviewRepository.findByAirlineNameAndIsHiddenFalse(airlineName, pageable)
+
+        log.info("✅ Found ${reviewsPage.content.size} reviews, total=${reviewsPage.totalElements}")
+
+        val response = mapOf(
+            "reviews" to reviewsPage.content.map { review ->
+                val user = userRepository.findById(review.userId).orElse(null)
+                review.toResponse(user?.name, canEdit = false)
+            },
+            "currentPage" to reviewsPage.number,
+            "totalPages" to reviewsPage.totalPages,
+            "totalItems" to reviewsPage.totalElements,
+            "airlineRating" to reviewsPage.content.toAirlineRatingResponse(airlineName)
+        )
+        return ResponseEntity.ok(response)
+    }
+
+    @GetMapping("/my")
+    fun getMyReviews(principal: Principal): ResponseEntity<List<ReviewResponse>> {
+        val user = userRepository.findByEmail(principal.name)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+
+        log.info("📝 GET MY REVIEWS: userId=$userId")
+
+        val reviews = reviewRepository.findByUserId(userId)
+            .map { review ->
+                val canEdit = review.createdAt.isAfter(LocalDateTime.now().minusHours(48))
+                review.toResponse(user.name, canEdit = canEdit)
+            }
+
+        log.info("✅ Found ${reviews.size} reviews for user $userId")
+        return ResponseEntity.ok(reviews)
     }
 
     @PutMapping("/{id}")
@@ -77,6 +220,8 @@ class ReviewController(
         @PathVariable id: Long,
         @RequestBody request: UpdateReviewRequest
     ): ResponseEntity<ReviewResponse> {
+        log.info("📝 UPDATE REVIEW: id=$id, rating=${request.rating}")
+
         val user = userRepository.findByEmail(principal.name)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
@@ -86,10 +231,12 @@ class ReviewController(
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
 
         if (review.userId != userId) {
+            log.warn("❌ Review $id belongs to different user")
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
-        if (review.createdAt.isBefore(LocalDateTime.now().minusHours(24))) {
+        if (review.createdAt.isBefore(LocalDateTime.now().minusHours(48))) {
+            log.warn("❌ Review $id is too old to edit")
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -107,6 +254,7 @@ class ReviewController(
         )
 
         val saved = reviewRepository.save(updatedReview)
+        log.info("✅ Review updated: id=${saved.id}")
 
         return ResponseEntity.ok(saved.toResponse(user.name, canEdit = true))
     }
@@ -116,6 +264,8 @@ class ReviewController(
         principal: Principal,
         @PathVariable id: Long
     ): ResponseEntity<Void> {
+        log.info("📝 DELETE REVIEW: id=$id")
+
         val user = userRepository.findByEmail(principal.name)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
@@ -125,110 +275,13 @@ class ReviewController(
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
 
         if (review.userId != userId) {
+            log.warn("❌ Review $id belongs to different user")
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
         reviewRepository.deleteById(id)
+        log.info("✅ Review deleted: id=$id")
 
         return ResponseEntity.noContent().build()
-    }
-
-    @GetMapping("/flight/{flightId}")
-    fun getFlightReviews(@PathVariable flightId: Long): ResponseEntity<List<ReviewResponse>> {
-        val reviews = reviewRepository.findByFlightIdAndIsHiddenFalse(flightId)
-            .map { review ->
-                val user = userRepository.findById(review.userId).orElse(null)
-                review.toResponse(user?.name, canEdit = false)
-            }
-
-        return ResponseEntity.ok(reviews)
-    }
-
-    @GetMapping("/flight/{flightId}/paginated")
-    fun getFlightReviewsPaginated(
-        @PathVariable flightId: Long,
-        @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "20") size: Int
-    ): ResponseEntity<Map<String, Any>> {
-        val pageable = PageRequest.of(page, size, Sort.by("createdAt").descending())
-        val reviewsPage = reviewRepository.findByFlightIdAndIsHiddenFalse(flightId, pageable)
-
-        return ResponseEntity.ok(mapOf(
-            "reviews" to reviewsPage.content.map { review ->
-                val user = userRepository.findById(review.userId).orElse(null)
-                review.toResponse(user?.name, canEdit = false)
-            },
-            "currentPage" to reviewsPage.number,
-            "totalPages" to reviewsPage.totalPages,
-            "totalItems" to reviewsPage.totalElements
-        ))
-    }
-
-    @GetMapping("/airline/{airlineName}")
-    fun getAirlineRating(@PathVariable airlineName: String): ResponseEntity<AirlineRatingResponse> {
-        val reviews = reviewRepository.findByAirlineNameAndIsHiddenFalse(airlineName)
-        return ResponseEntity.ok(reviews.toAirlineRatingResponse(airlineName))
-    }
-
-    @GetMapping("/airline/{airlineName}/paginated")
-    fun getAirlineRatingPaginated(
-        @PathVariable airlineName: String,
-        @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "20") size: Int
-    ): ResponseEntity<Map<String, Any>> {
-        val pageable = PageRequest.of(page, size, Sort.by("createdAt").descending())
-        val reviewsPage = reviewRepository.findByAirlineNameAndIsHiddenFalse(airlineName, pageable)
-
-        return ResponseEntity.ok(mapOf(
-            "reviews" to reviewsPage.content.map { review ->
-                val user = userRepository.findById(review.userId).orElse(null)
-                review.toResponse(user?.name, canEdit = false)
-            },
-            "currentPage" to reviewsPage.number,
-            "totalPages" to reviewsPage.totalPages,
-            "totalItems" to reviewsPage.totalElements,
-            "airlineRating" to reviewsPage.content.toAirlineRatingResponse(airlineName)
-        ))
-    }
-
-    @GetMapping("/my")
-    fun getMyReviews(principal: Principal): ResponseEntity<List<ReviewResponse>> {
-        val user = userRepository.findByEmail(principal.name)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
-
-        val reviews = reviewRepository.findByUserId(userId)
-            .map { review ->
-                review.toResponse(user.name, canEdit = review.createdAt.isAfter(LocalDateTime.now().minusHours(24)))
-            }
-
-        return ResponseEntity.ok(reviews)
-    }
-
-    @GetMapping("/can-review/{bookingId}")
-    fun canReview(
-        principal: Principal,
-        @PathVariable bookingId: Long
-    ): ResponseEntity<Map<String, Boolean>> {
-        val user = userRepository.findByEmail(principal.name)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
-
-        val booking = bookingRepository.findById(bookingId).orElse(null)
-            ?: return ResponseEntity.ok(mapOf("canReview" to false))
-
-        if (booking.userId != userId) {
-            return ResponseEntity.ok(mapOf("canReview" to false))
-        }
-
-        val flight = flightRepository.findById(booking.flightId).orElse(null)
-            ?: return ResponseEntity.ok(mapOf("canReview" to false))
-
-        val hasReview = reviewRepository.existsByBookingId(bookingId)
-        val flightPassed = flight.flightDate.isBefore(LocalDate.now())
-
-        return ResponseEntity.ok(mapOf("canReview" to (flightPassed && !hasReview)))
     }
 }

@@ -12,112 +12,177 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 
 @Service
-class FlightService(private val flightRepository: FlightRepository) {
+class FlightService(
+    private val flightRepository: FlightRepository,
+    private val flightCacheManager: FlightCacheManager
+) {
 
     private val logger = LoggerFactory.getLogger(FlightService::class.java)
 
-    // Получить все рейсы
     @Transactional(readOnly = true)
     fun getAllFlights(): List<FlightDTO> {
         return flightRepository.findAll().map { it.toDTO() }
     }
 
-    // Получить рейс по ID
-    @Transactional(readOnly = true)
-    @Cacheable(value = ["flight"], key = "#id", unless = "#result == null")
-    fun getFlightById(id: Long): FlightDTO {
-        logger.info("✈️ Loading flight from DATABASE (cache miss): id=$id")
-        val flight = flightRepository.findById(id)
-            .orElseThrow { ResourceNotFoundException("Flight with ID $id not found") }
-        return flight.toDTO()
+    // ⬇️ ИСПОЛЬЗУЕМ КАСТОМНЫЙ КЕШ-МЕНЕДЖЕР
+    fun getFlightById(id: Long): FlightDTO? {
+        logger.info("🔍 Fetching flight by ID: $id")
+
+        // Пытаемся получить из кеша с правильной типизацией
+        val cached = flightCacheManager.getFlight(id)
+        if (cached != null) {
+            logger.info("✅ Flight $id found in cache")
+            return cached
+        }
+
+        // Если нет в кеше — ищем в БД
+        val flight = flightRepository.findById(id).orElse(null)
+        if (flight == null) {
+            logger.warn("❌ Flight not found: $id")
+            return null
+        }
+
+        val dto = flight.toDTO()
+        // Сохраняем в кеш с правильной типизацией
+        flightCacheManager.putFlight(id, dto)
+        logger.info("✅ Flight $id cached")
+        return dto
     }
 
-    // Поиск рейсов по городам (с кэшированием)
     @Transactional(readOnly = true)
-    @Cacheable(value = ["flights"], key = "#departureCity + ':' + #arrivalCity", unless = "#result == null || #result.isEmpty()")
     fun findFlightsByCities(departureCity: String, arrivalCity: String): List<FlightDTO> {
-        logger.info("🔍 Searching flights from DATABASE (cache miss): $departureCity → $arrivalCity")
-        return flightRepository.findByDepartureCityAndArrivalCity(departureCity, arrivalCity)
+        val key = "search:$departureCity:$arrivalCity"
+        val cached = flightCacheManager.getFlights(key)
+        if (cached != null) {
+            return cached
+        }
+
+        val flights = flightRepository.findByDepartureCityAndArrivalCity(departureCity, arrivalCity)
             .map { it.toDTO() }
+
+        flightCacheManager.putFlights(key, flights)
+        return flights
     }
 
-    // Поиск рейсов по дате
     @Transactional(readOnly = true)
-    @Cacheable(value = ["flights_date"], key = "#flightDate", unless = "#result == null || #result.isEmpty()")
     fun findFlightsByDate(flightDate: LocalDate): List<FlightDTO> {
-        logger.info("📅 Loading flights by date from DATABASE (cache miss): $flightDate")
-        return flightRepository.findByFlightDate(flightDate).map { it.toDTO() }
+        val key = "date:$flightDate"
+        val cached = flightCacheManager.getFlights(key)
+        if (cached != null) {
+            return cached
+        }
+
+        val flights = flightRepository.findByFlightDate(flightDate).map { it.toDTO() }
+        flightCacheManager.putFlights(key, flights)
+        return flights
     }
 
-    // Поиск рейсов по городам и дате (с кэшированием)
     @Transactional(readOnly = true)
-    @Cacheable(value = ["flights"], key = "#departureCity + ':' + #arrivalCity + ':' + #flightDate", unless = "#result == null || #result.isEmpty()")
     fun findFlightsByCitiesAndDate(
         departureCity: String,
         arrivalCity: String,
         flightDate: LocalDate
     ): List<FlightDTO> {
-        logger.info("🔍 Searching flights from DATABASE (cache miss): $departureCity → $arrivalCity on $flightDate")
-        return flightRepository.findByDepartureCityAndArrivalCityAndFlightDate(
+        val key = "search:$departureCity:$arrivalCity:$flightDate"
+        val cached = flightCacheManager.getFlights(key)
+        if (cached != null) {
+            return cached
+        }
+
+        val flights = flightRepository.findByDepartureCityAndArrivalCityAndFlightDate(
             departureCity,
             arrivalCity,
             flightDate
         ).map { it.toDTO() }
+
+        flightCacheManager.putFlights(key, flights)
+        return flights
     }
 
-    // Поиск с классом
     @Transactional(readOnly = true)
-    fun findFlightsByCitiesAndClass(departureCity: String, arrivalCity: String, classType: String?): List<FlightDTO> {
+    fun findFlightsByCitiesAndClass(
+        departureCity: String,
+        arrivalCity: String,
+        classType: String?
+    ): List<FlightDTO> {
+        val key = "search:$departureCity:$arrivalCity:class:$classType"
+        val cached = flightCacheManager.getFlights(key)
+        if (cached != null) {
+            return cached
+        }
+
         val flights = flightRepository.findByDepartureCityAndArrivalCity(departureCity, arrivalCity)
-        return flights
             .filter { classType == null || it.classSeat.equals(classType, ignoreCase = true) }
             .map { it.toDTO() }
+
+        flightCacheManager.putFlights(key, flights)
+        return flights
     }
 
     @Transactional(readOnly = true)
-    fun findFlightsByCitiesAndDateAndClass(departureCity: String, arrivalCity: String, flightDate: LocalDate, classType: String?): List<FlightDTO> {
-        val flights = flightRepository.findByDepartureCityAndArrivalCityAndFlightDate(departureCity, arrivalCity, flightDate)
-        return flights
-            .filter { classType == null || it.classSeat.equals(classType, ignoreCase = true) }
+    fun findFlightsByCitiesAndDateAndClass(
+        departureCity: String,
+        arrivalCity: String,
+        flightDate: LocalDate,
+        classType: String?
+    ): List<FlightDTO> {
+        val key = "search:$departureCity:$arrivalCity:$flightDate:class:$classType"
+        val cached = flightCacheManager.getFlights(key)
+        if (cached != null) {
+            return cached
+        }
+
+        val flights = flightRepository.findByDepartureCityAndArrivalCityAndFlightDate(
+            departureCity,
+            arrivalCity,
+            flightDate
+        ).filter { classType == null || it.classSeat.equals(classType, ignoreCase = true) }
             .map { it.toDTO() }
+
+        flightCacheManager.putFlights(key, flights)
+        return flights
     }
 
-    // Создать новый рейс (очищаем кэш)
     @Transactional
-    @CacheEvict(value = ["flights", "flights_date", "locations"], allEntries = true)
     fun createFlight(flightDTO: FlightDTO): FlightDTO {
-        logger.info("✈️ Creating new flight, clearing cache")
+        logger.info("📝 Creating new flight, clearing cache")
         val flight = flightDTO.toEntity()
-        return flightRepository.save(flight).toDTO()
+        val saved = flightRepository.save(flight)
+        flightCacheManager.clearAll()
+        return saved.toDTO()
     }
 
-    // Обновить рейс (очищаем кэш)
     @Transactional
-    @CacheEvict(value = ["flights", "flights_date", "flight"], allEntries = true)
     fun updateFlight(id: Long, flightDTO: FlightDTO): FlightDTO {
-        logger.info("✈️ Updating flight id=$id, clearing cache")
+        logger.info("📝 Updating flight id=$id, clearing cache")
         val existingFlight = flightRepository.findById(id)
             .orElseThrow { ResourceNotFoundException("Flight with ID $id not found") }
         val updatedFlight = flightDTO.toEntity(existingFlight.flightId)
-        return flightRepository.save(updatedFlight).toDTO()
+        val saved = flightRepository.save(updatedFlight)
+        flightCacheManager.clearAll()
+        return saved.toDTO()
     }
 
-    // Удалить рейс (очищаем кэш)
     @Transactional
-    @CacheEvict(value = ["flights", "flights_date", "flight"], allEntries = true)
     fun deleteFlight(id: Long) {
         logger.info("🗑️ Deleting flight id=$id, clearing cache")
         if (!flightRepository.existsById(id)) {
             throw ResourceNotFoundException("Flight with ID $id not found")
         }
         flightRepository.deleteById(id)
+        flightCacheManager.clearAll()
     }
 
     fun getAllClassSeats(): List<String> {
         return flightRepository.findDistinctClassSeats()
     }
 
-    // Преобразование Flight в FlightDTO
+    fun clearCache() {
+        logger.info("🧹 Flight cache cleared")
+        flightCacheManager.clearAll()
+    }
+
+    // ⬇️ МЕТОДЫ ДЛЯ ПРЕОБРАЗОВАНИЯ
     private fun Flight.toDTO(): FlightDTO {
         return FlightDTO(
             flightId = this.flightId,
@@ -137,7 +202,6 @@ class FlightService(private val flightRepository: FlightRepository) {
         )
     }
 
-    // Преобразование FlightDTO в Flight
     private fun FlightDTO.toEntity(flightId: Long? = null): Flight {
         return Flight(
             flightId = flightId ?: 0,
