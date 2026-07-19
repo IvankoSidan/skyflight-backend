@@ -32,7 +32,7 @@ data class ReferredUser(
     val email: String,
     val name: String?,
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy, HH:mm", locale = "en_US")
     val registeredAt: String,
 
     val status: String

@@ -20,7 +20,6 @@ class JwtUtil(
 ) {
     private val logger: Logger = LoggerFactory.getLogger(JwtUtil::class.java)
 
-    // Декодируем Base64 и создаём Key для HS256
     private val signingKey: Key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret))
 
     fun generateToken(email: String, rememberMe: Boolean = false): String {
@@ -64,5 +63,22 @@ class JwtUtil(
             .build()
             .parseClaimsJws(token)
             .body
+    }
+
+    fun extractExpiration(token: String): Date? {
+        return try {
+            getClaimFromToken(token) { it.expiration }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun isTokenValid(token: String): Boolean {
+        return try {
+            val username = extractUsername(token)
+            validateToken(token, username)
+        } catch (e: Exception) {
+            false
+        }
     }
 }

@@ -98,21 +98,53 @@ class BookingService(
     @Transactional
     fun releaseSeats(booking: Booking) {
         try {
-            val flight = flightRepository.findByIdWithPessimisticLock(booking.flightId)
-                ?: return
+            log.info("🔄 Releasing seats for booking ${booking.id}: ${booking.seatNumbers}")
 
-            val seatsToRelease = booking.seatNumbers.split(",").map { it.trim() }
+            val flight = flightRepository.findByIdWithPessimisticLock(booking.flightId)
+            if (flight == null) {
+                log.warn("⚠️ Flight not found for booking ${booking.id}, flightId=${booking.flightId}")
+                return
+            }
+
+            val seatsToRelease = booking.seatNumbers.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            if (seatsToRelease.isEmpty()) {
+                log.warn("⚠️ No seats to release for booking ${booking.id}")
+                return
+            }
+
             val currentReserved = flight.reservedSeats.split(",")
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .toMutableSet()
 
+            log.info("📋 Current reserved seats for flight ${flight.flightId}: $currentReserved")
+            log.info("📋 Seats to release: $seatsToRelease")
+
             val updatedReserved = currentReserved.filter { !seatsToRelease.contains(it) }
             flight.reservedSeats = updatedReserved.joinToString(",")
             flightRepository.save(flight)
 
+            log.info("✅ Released seats ${seatsToRelease.joinToString()} for flight ${flight.flightId}")
+            log.info("📋 Updated reserved seats: ${flight.reservedSeats}")
+
         } catch (e: Exception) {
-            log.error("Failed to release seats for booking ${booking.id}", e)
+            log.error("❌ Failed to release seats for booking ${booking.id}", e)
+            throw e
+        }
+    }
+
+    @Transactional
+    fun releaseSeatsByBookingId(bookingId: Long) {
+        try {
+            val booking = bookingRepository.findById(bookingId).orElse(null)
+            if (booking == null) {
+                log.warn("⚠️ Booking not found: $bookingId")
+                return
+            }
+            releaseSeats(booking)
+        } catch (e: Exception) {
+            log.error("❌ Failed to release seats for booking $bookingId", e)
+            throw e
         }
     }
 

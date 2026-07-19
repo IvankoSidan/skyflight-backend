@@ -78,9 +78,9 @@ dependencies {
 	implementation("org.hibernate.validator:hibernate-validator:8.0.1.Final")
 
 	// ============================================================
-	// DATABASE
+	// DATABASE 🔥 ИСПРАВЛЕНО!
 	// ============================================================
-	runtimeOnly("org.postgresql:postgresql")
+	implementation("org.postgresql:postgresql:42.7.3")  // ✅ runtimeOnly -> implementation + версия
 	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 	implementation("org.apache.commons:commons-pool2")
 

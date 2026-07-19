@@ -6,11 +6,13 @@ import com.wheezy.server.DTO.TaxRateResponse
 import com.wheezy.server.Repository.UserRepository
 import com.wheezy.server.Service.InvoicePdfService
 import com.wheezy.server.Service.InvoiceService
+import org.slf4j.LoggerFactory
 import org.springframework.core.io.FileSystemResource
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.io.File
 import java.security.Principal
 
 @RestController
@@ -20,6 +22,8 @@ class InvoiceController(
     private val invoicePdfService: InvoicePdfService,
     private val userRepository: UserRepository
 ) {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     @GetMapping("/booking/{bookingId}")
     fun getInvoiceByBookingId(
@@ -59,13 +63,51 @@ class InvoiceController(
         val invoice = invoiceService.getInvoiceById(userId, invoiceId)
             ?: return ResponseEntity.notFound().build()
 
-        val pdfFile = invoicePdfService.getInvoicePdfFile(invoice.invoiceNumber)
-            ?: return ResponseEntity.notFound().build()
+        val pdfFile = findInvoicePdfFile(invoice.invoiceNumber)
+        if (pdfFile == null) {
+            log.warn("PDF not found for invoice: ${invoice.invoiceNumber}")
+            return ResponseEntity.notFound().build()
+        }
+
+        log.info("Downloading invoice PDF: ${pdfFile.absolutePath} (${pdfFile.length()} bytes)")
 
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"${invoice.invoiceNumber}.pdf\"")
             .contentType(MediaType.APPLICATION_PDF)
+            .contentLength(pdfFile.length())
             .body(FileSystemResource(pdfFile))
+    }
+
+    private fun findInvoicePdfFile(invoiceNumber: String): File? {
+        val possiblePaths = listOf(
+            "/opt/skyflight/invoices/$invoiceNumber.pdf",
+            "/opt/skyflight/backups/invoices/$invoiceNumber.pdf",
+            "/var/www/skyflight/invoices/$invoiceNumber.pdf",
+            "./invoices/$invoiceNumber.pdf"
+        )
+
+        for (path in possiblePaths) {
+            val file = File(path)
+            if (file.exists() && file.isFile) {
+                log.debug("PDF found at: $path")
+                return file
+            }
+        }
+
+        val invoicesDirs = listOf(
+            File("/opt/skyflight/invoices"),
+            File("/var/www/skyflight/invoices"),
+            File("./invoices")
+        )
+
+        for (dir in invoicesDirs) {
+            if (dir.exists() && dir.isDirectory) {
+                val files = dir.listFiles { _, name -> name.startsWith(invoiceNumber) && name.endsWith(".pdf") }
+                files?.firstOrNull()?.let { return it }
+            }
+        }
+
+        return null
     }
 
     @PostMapping("/booking/{bookingId}/resend")

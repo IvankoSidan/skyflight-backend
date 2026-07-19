@@ -12,7 +12,7 @@ data class BookingDetailsDTO(
     val seatCount: Int,
     val status: BookingStatus,
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy, HH:mm", locale = "en_US")
     val bookingDate: LocalDateTime,
 
     val flightId: Long,
@@ -23,7 +23,7 @@ data class BookingDetailsDTO(
     val departureTime: String,
     val arriveTime: String,
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy", locale = "en_US")
     val flightDate: LocalDate,
 
     val classSeat: String,
@@ -32,5 +32,25 @@ data class BookingDetailsDTO(
     val promocodeId: Long? = null,
     val promocodeCode: String? = null,
     val promocodeDiscountPercent: Int? = null,
-    val promocodeDiscountAmount: Long? = null
+    val promocodeDiscountAmount: Long? = null,
+    val passengerName: String? = null,
+    val passengerEmail: String? = null,
+    val paymentMethod: String? = null,
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy, HH:mm", locale = "en_US")
+    val paymentDate: LocalDateTime? = null,
+
+    val paymentStatus: String? = null,
+    val paymentAmount: BigDecimal? = null,
+    val refundStatus: String? = null,
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy, HH:mm", locale = "en_US")
+    val refundDate: LocalDateTime? = null,
+
+    val refundAmount: BigDecimal? = null,
+    val invoiceUrl: String? = null,
+    val ticketUrl: String? = null,
+    val totalPrice: BigDecimal? = null,
+    val discountAmount: BigDecimal? = null,
+    val finalPrice: BigDecimal? = null
 )

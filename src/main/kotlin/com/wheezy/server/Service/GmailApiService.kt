@@ -40,10 +40,12 @@ class GmailApiService(
                     val jsonNode = objectMapper.readTree(json)
                     jsonNode.get("access_token")?.asText()
                 } else {
+                    logger.error("Failed to get access token: ${response.code} ${response.message}")
                     null
                 }
             }
         } catch (e: Exception) {
+            logger.error("Error getting access token", e)
             null
         }
     }
@@ -51,27 +53,44 @@ class GmailApiService(
     fun sendEmail(to: String, subject: String, htmlContent: String): Boolean {
         val recipient = to.trim()
         if (recipient.isBlank()) {
+            logger.warn("Recipient email is empty")
             return false
         }
 
-        val accessToken = getAccessToken()
-        if (accessToken == null) {
+        if (!isValidEmail(recipient)) {
+            logger.warn("Invalid email address: $recipient")
+            return false
+        }
+
+        val accessToken = getAccessToken() ?: run {
+            logger.error("Failed to get access token")
             return false
         }
 
         val cleanToken = accessToken.trim().replace("\n", "").replace("\r", "")
         if (cleanToken.isEmpty()) {
+            logger.error("Access token is empty")
+            return false
+        }
+
+        val fromEmail = userEmail.trim()
+        if (!isValidEmail(fromEmail)) {
+            logger.error("Invalid sender email: $fromEmail")
             return false
         }
 
         return try {
-            val email = "From: $userEmail\n" +
-                    "To: $recipient\n" +
-                    "Subject: $subject\n" +
-                    "MIME-Version: 1.0\n" +
-                    "Content-Type: text/html; charset=utf-8\n" +
-                    "\n" +
-                    htmlContent
+            logger.info("📧 Sending email to: $recipient, subject: $subject")
+
+            val email = buildString {
+                append("From: $fromEmail\n")
+                append("To: $recipient\n")
+                append("Subject: $subject\n")
+                append("MIME-Version: 1.0\n")
+                append("Content-Type: text/html; charset=utf-8\n")
+                append("\n")
+                append(htmlContent)
+            }
 
             val encodedEmail = Base64.getUrlEncoder().withoutPadding().encodeToString(email.toByteArray())
 
@@ -79,16 +98,24 @@ class GmailApiService(
             val jsonBody = objectMapper.writeValueAsString(body)
 
             val request = Request.Builder()
-                .url("https://gmail.googleapis.com/gmail/v1/users/$userEmail/messages/send")
+                .url("https://gmail.googleapis.com/gmail/v1/users/$fromEmail/messages/send")
                 .addHeader("Authorization", "Bearer $cleanToken")
                 .addHeader("Content-Type", "application/json")
                 .post(jsonBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
             client.newCall(request).execute().use { response ->
-                response.isSuccessful
+                val success = response.isSuccessful
+                if (success) {
+                    logger.info("✅ Email sent successfully to $recipient")
+                } else {
+                    val errorBody = response.body?.string()
+                    logger.error("❌ Failed to send email: ${response.code} ${response.message} - $errorBody")
+                }
+                success
             }
         } catch (e: Exception) {
+            logger.error("Failed to send email to $recipient", e)
             false
         }
     }
@@ -102,40 +129,60 @@ class GmailApiService(
     ): Boolean {
         val recipient = to.trim()
         if (recipient.isBlank()) {
+            logger.warn("Recipient email is empty")
             return false
         }
 
-        val accessToken = getAccessToken()
-        if (accessToken == null) {
+        if (!isValidEmail(recipient)) {
+            logger.warn("Invalid email address: $recipient")
+            return false
+        }
+
+        val accessToken = getAccessToken() ?: run {
+            logger.error("Failed to get access token")
             return false
         }
 
         val cleanToken = accessToken.trim().replace("\n", "").replace("\r", "")
         if (cleanToken.isEmpty()) {
+            logger.error("Access token is empty")
+            return false
+        }
+
+        val fromEmail = userEmail.trim()
+        if (!isValidEmail(fromEmail)) {
+            logger.error("Invalid sender email: $fromEmail")
             return false
         }
 
         return try {
+            logger.info("📧 Sending email with attachment to: $recipient, subject: $subject")
+            logger.info("📎 Attachment: $attachmentName, size: ${attachmentData.size} bytes")
+
             val boundary = "----=_Part_${System.currentTimeMillis()}"
             val encodedAttachment = Base64.getEncoder().encodeToString(attachmentData)
 
-            val email = "From: $userEmail\n" +
-                    "To: $recipient\n" +
-                    "Subject: $subject\n" +
-                    "MIME-Version: 1.0\n" +
-                    "Content-Type: multipart/mixed; boundary=\"$boundary\"\n" +
-                    "\n" +
-                    "--$boundary\n" +
-                    "Content-Type: text/html; charset=utf-8\n" +
-                    "\n" +
-                    htmlContent + "\n\n" +
-                    "--$boundary\n" +
-                    "Content-Type: application/pdf; name=\"$attachmentName\"\n" +
-                    "Content-Disposition: attachment; filename=\"$attachmentName\"\n" +
-                    "Content-Transfer-Encoding: base64\n" +
-                    "\n" +
-                    encodedAttachment + "\n\n" +
-                    "--$boundary--\n"
+            val email = buildString {
+                append("From: $fromEmail\n")
+                append("To: $recipient\n")
+                append("Subject: $subject\n")
+                append("MIME-Version: 1.0\n")
+                append("Content-Type: multipart/mixed; boundary=\"$boundary\"\n")
+                append("\n")
+                append("--$boundary\n")
+                append("Content-Type: text/html; charset=utf-8\n")
+                append("\n")
+                append(htmlContent)
+                append("\n\n")
+                append("--$boundary\n")
+                append("Content-Type: application/pdf; name=\"$attachmentName\"\n")
+                append("Content-Disposition: attachment; filename=\"$attachmentName\"\n")
+                append("Content-Transfer-Encoding: base64\n")
+                append("\n")
+                append(encodedAttachment)
+                append("\n\n")
+                append("--$boundary--\n")
+            }
 
             val encodedEmail = Base64.getUrlEncoder().withoutPadding().encodeToString(email.toByteArray())
 
@@ -143,17 +190,31 @@ class GmailApiService(
             val jsonBody = objectMapper.writeValueAsString(body)
 
             val request = Request.Builder()
-                .url("https://gmail.googleapis.com/gmail/v1/users/$userEmail/messages/send")
+                .url("https://gmail.googleapis.com/gmail/v1/users/$fromEmail/messages/send")
                 .addHeader("Authorization", "Bearer $cleanToken")
                 .addHeader("Content-Type", "application/json")
                 .post(jsonBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
             client.newCall(request).execute().use { response ->
-                response.isSuccessful
+                val success = response.isSuccessful
+                if (success) {
+                    logger.info("✅ Email with attachment sent successfully to $recipient")
+                } else {
+                    val errorBody = response.body?.string()
+                    logger.error("❌ Failed to send email: ${response.code} ${response.message} - $errorBody")
+                }
+                success
             }
         } catch (e: Exception) {
+            logger.error("Failed to send email with attachment to $recipient", e)
             false
         }
+    }
+
+    private fun isValidEmail(email: String): Boolean {
+        if (email.isBlank()) return false
+        val emailRegex = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+        return emailRegex.matches(email)
     }
 }

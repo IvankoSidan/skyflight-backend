@@ -24,28 +24,24 @@ class FlightService(
         return flightRepository.findAll().map { it.toDTO() }
     }
 
-    // ⬇️ ИСПОЛЬЗУЕМ КАСТОМНЫЙ КЕШ-МЕНЕДЖЕР
     fun getFlightById(id: Long): FlightDTO? {
-        logger.info("🔍 Fetching flight by ID: $id")
+        logger.info("Fetching flight by ID: $id")
 
-        // Пытаемся получить из кеша с правильной типизацией
         val cached = flightCacheManager.getFlight(id)
         if (cached != null) {
-            logger.info("✅ Flight $id found in cache")
+            logger.info("Flight $id found in cache")
             return cached
         }
 
-        // Если нет в кеше — ищем в БД
         val flight = flightRepository.findById(id).orElse(null)
         if (flight == null) {
-            logger.warn("❌ Flight not found: $id")
+            logger.warn("Flight not found: $id")
             return null
         }
 
         val dto = flight.toDTO()
-        // Сохраняем в кеш с правильной типизацией
         flightCacheManager.putFlight(id, dto)
-        logger.info("✅ Flight $id cached")
+        logger.info("Flight $id cached")
         return dto
     }
 
@@ -145,7 +141,7 @@ class FlightService(
 
     @Transactional
     fun createFlight(flightDTO: FlightDTO): FlightDTO {
-        logger.info("📝 Creating new flight, clearing cache")
+        logger.info("Creating new flight, clearing cache")
         val flight = flightDTO.toEntity()
         val saved = flightRepository.save(flight)
         flightCacheManager.clearAll()
@@ -154,7 +150,7 @@ class FlightService(
 
     @Transactional
     fun updateFlight(id: Long, flightDTO: FlightDTO): FlightDTO {
-        logger.info("📝 Updating flight id=$id, clearing cache")
+        logger.info("Updating flight id=$id, clearing cache")
         val existingFlight = flightRepository.findById(id)
             .orElseThrow { ResourceNotFoundException("Flight with ID $id not found") }
         val updatedFlight = flightDTO.toEntity(existingFlight.flightId)
@@ -165,7 +161,7 @@ class FlightService(
 
     @Transactional
     fun deleteFlight(id: Long) {
-        logger.info("🗑️ Deleting flight id=$id, clearing cache")
+        logger.info("Deleting flight id=$id, clearing cache")
         if (!flightRepository.existsById(id)) {
             throw ResourceNotFoundException("Flight with ID $id not found")
         }
@@ -178,11 +174,10 @@ class FlightService(
     }
 
     fun clearCache() {
-        logger.info("🧹 Flight cache cleared")
+        logger.info("Flight cache cleared")
         flightCacheManager.clearAll()
     }
 
-    // ⬇️ МЕТОДЫ ДЛЯ ПРЕОБРАЗОВАНИЯ
     private fun Flight.toDTO(): FlightDTO {
         return FlightDTO(
             flightId = this.flightId,
@@ -222,6 +217,6 @@ class FlightService(
     }
 
     private fun extractFilenameFromPath(path: String): String {
-        return path.substringAfterLast('/').substringBefore('?')
+        return path.substringAfterLast('/').substringBefore('?').substringBefore('.')
     }
 }

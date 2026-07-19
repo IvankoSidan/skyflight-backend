@@ -1,27 +1,23 @@
 package com.wheezy.server.Controller
 
-import org.springframework.core.io.FileSystemResource
-import org.springframework.http.HttpHeaders
-import org.springframework.http.MediaType
-import org.springframework.http.ResponseEntity
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.RestController
-import java.io.File
+import org.springframework.web.servlet.view.RedirectView
 
-@RestController
+@Controller
 class DownloadController {
 
+    @Value("\${app.download.url}")
+    private lateinit var downloadUrl: String
+
     @GetMapping("/download")
-    fun downloadApk(): ResponseEntity<FileSystemResource> {
-        val apkFile = File("/var/www/skyflight/apk/app-release.apk")
+    fun downloadApk(): RedirectView {
+        return RedirectView(downloadUrl)
+    }
 
-        if (!apkFile.exists()) {
-            return ResponseEntity.notFound().build()
-        }
-
-        return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"SkyFlight.apk\"")
-            .contentType(MediaType.APPLICATION_OCTET_STREAM)
-            .body(FileSystemResource(apkFile))
+    @GetMapping("/download-page")
+    fun downloadPage(): String {
+        return "download"
     }
 }

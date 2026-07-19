@@ -5,8 +5,8 @@ import com.wheezy.server.Repository.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.messaging.handler.annotation.MessageMapping
 import org.springframework.messaging.simp.SimpMessagingTemplate
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Controller
-import java.security.Principal
 
 @Controller
 class WebSocketNotificationController(
@@ -17,47 +17,77 @@ class WebSocketNotificationController(
     private val logger = LoggerFactory.getLogger(javaClass)
 
     @MessageMapping("/notifications/subscribe")
-    fun subscribeToNotifications(principal: Principal?) {
-        if (principal == null) {
-            logger.warn("Unauthorized WebSocket subscription attempt for notifications")
-            return
-        }
+    fun subscribeToNotifications() {
+        try {
+            val authentication = SecurityContextHolder.getContext().authentication
+            if (authentication == null || !authentication.isAuthenticated) {
+                logger.warn("WebSocket subscription attempt without authentication")
+                return
+            }
 
-        val userEmail = principal.name
+            val userEmail = authentication.name
+            val user = userRepository.findByEmail(userEmail)
+            if (user == null) {
+                logger.warn("User not found: $userEmail")
+                return
+            }
 
-        messagingTemplate.convertAndSendToUser(
-            userEmail,
-            "/queue/notifications/subscribed",
-            mapOf(
-                "type" to "subscription",
-                "status" to "success",
-                "message" to "Subscribed to notifications"
+            messagingTemplate.convertAndSendToUser(
+                userEmail,
+                "/queue/notifications/subscribed",
+                mapOf(
+                    "type" to "subscription",
+                    "status" to "success",
+                    "message" to "Subscribed to notifications",
+                    "userId" to user.id
+                )
             )
-        )
+            logger.info("User $userEmail subscribed to notifications")
+        } catch (e: Exception) {
+            logger.error("Error subscribing to notifications: ${e.message}", e)
+        }
     }
 
     @MessageMapping("/bookings/subscribe")
-    fun subscribeToBookingUpdates(principal: Principal?) {
-        if (principal == null) {
-            logger.warn("Unauthorized WebSocket subscription attempt for booking updates")
-            return
-        }
+    fun subscribeToBookingUpdates() {
+        try {
+            val authentication = SecurityContextHolder.getContext().authentication
+            if (authentication == null || !authentication.isAuthenticated) {
+                logger.warn("WebSocket booking subscription attempt without authentication")
+                return
+            }
 
-        val userEmail = principal.name
+            val userEmail = authentication.name
+            val user = userRepository.findByEmail(userEmail)
+            if (user == null) {
+                logger.warn("User not found: $userEmail")
+                return
+            }
 
-        messagingTemplate.convertAndSendToUser(
-            userEmail,
-            "/queue/bookings/subscribed",
-            mapOf(
-                "type" to "subscription",
-                "status" to "success",
-                "message" to "Subscribed to booking updates"
+            messagingTemplate.convertAndSendToUser(
+                userEmail,
+                "/queue/bookings/subscribed",
+                mapOf(
+                    "type" to "subscription",
+                    "status" to "success",
+                    "message" to "Subscribed to booking updates",
+                    "userId" to user.id
+                )
             )
-        )
+            logger.info("User $userEmail subscribed to booking updates")
+        } catch (e: Exception) {
+            logger.error("Error subscribing to booking updates: ${e.message}", e)
+        }
     }
 
     fun sendNotificationToUser(userEmail: String, notification: Notification) {
         try {
+            val user = userRepository.findByEmail(userEmail)
+            if (user == null) {
+                logger.warn("Cannot send notification to non-existent user: $userEmail")
+                return
+            }
+
             messagingTemplate.convertAndSendToUser(
                 userEmail,
                 "/queue/notifications",
@@ -78,16 +108,18 @@ class WebSocketNotificationController(
 
     fun sendBookingUpdate(userEmail: String, bookingId: Long, status: String, seatNumbers: String? = null) {
         try {
+            val data = mutableMapOf(
+                "bookingId" to bookingId,
+                "status" to status
+            )
+            seatNumbers?.let { data["seatNumbers"] = it }
+
             messagingTemplate.convertAndSendToUser(
                 userEmail,
                 "/queue/booking-updates",
                 mapOf(
                     "type" to "booking_update",
-                    "data" to mapOf(
-                        "bookingId" to bookingId,
-                        "status" to status,
-                        "seatNumbers" to (seatNumbers ?: "")
-                    )
+                    "data" to data
                 )
             )
         } catch (e: Exception) {
@@ -113,25 +145,6 @@ class WebSocketNotificationController(
             )
         } catch (e: Exception) {
             logger.error("Failed to send WebSocket payment update to $userEmail", e)
-        }
-    }
-
-    fun sendSeatUpdate(userEmail: String, flightId: Long, seatNumber: String, isBooked: Boolean) {
-        try {
-            messagingTemplate.convertAndSendToUser(
-                userEmail,
-                "/queue/seat-updates",
-                mapOf(
-                    "type" to "seat_update",
-                    "data" to mapOf(
-                        "flightId" to flightId,
-                        "seatNumber" to seatNumber,
-                        "isBooked" to isBooked
-                    )
-                )
-            )
-        } catch (e: Exception) {
-            logger.error("Failed to send WebSocket seat update to $userEmail", e)
         }
     }
 }

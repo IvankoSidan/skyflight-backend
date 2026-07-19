@@ -3,12 +3,12 @@ package com.wheezy.server.Controller
 import com.wheezy.server.DTO.BookingDetailsDTO
 import com.wheezy.server.DTO.BookingRequestDTO
 import com.wheezy.server.DTO.BookingResponseDTO
-import com.wheezy.server.DTO.BookingStatusUpdateRequest
 import com.wheezy.server.Enums.BookingStatus
 import com.wheezy.server.Enums.PaymentStatus
 import com.wheezy.server.Repository.BookingRepository
 import com.wheezy.server.Repository.FlightRepository
 import com.wheezy.server.Repository.PaymentRepository
+import com.wheezy.server.Repository.PointsTransactionRepository
 import com.wheezy.server.Repository.PromocodeRepository
 import com.wheezy.server.Repository.UserRepository
 import com.wheezy.server.Service.BookingService
@@ -31,6 +31,7 @@ class BookingController(
     private val flightRepository: FlightRepository,
     private val paymentRepository: PaymentRepository,
     private val promocodeRepository: PromocodeRepository,
+    private val pointsTransactionRepository: PointsTransactionRepository,
     private val paymentService: PaymentService,
     private val notificationSenderService: NotificationSenderService,
     private val bookingService: BookingService
@@ -108,7 +109,7 @@ class BookingController(
                 emptyList()
             }
             ResponseEntity.ok(seats)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
     }
@@ -131,11 +132,39 @@ class BookingController(
                 .filter { it.status == PaymentStatus.SUCCEEDED }
                 .maxByOrNull { it.createdAt }
 
+            val refundPayment = payments
+                .filter { it.status == PaymentStatus.REFUNDED || it.refundId != null }
+                .maxByOrNull { it.createdAt }
+
             val paidAmount = successfulPayment?.let {
                 BigDecimal(it.amount).divide(BigDecimal(100))
             }
 
             val promocode = booking.promocodeId?.let { promocodeRepository.findById(it).orElse(null) }
+            val passenger = userRepository.findById(booking.userId).orElse(null)
+
+            val flightPrice = flight?.price ?: BigDecimal.ZERO
+            val totalPrice = flightPrice.multiply(BigDecimal(booking.seatCount))
+
+            var discountAmount = BigDecimal.ZERO
+
+            promocode?.let { promo ->
+                val discountAmountValue = promo.discountAmount
+                val discountPercentValue = promo.discountPercent
+                discountAmount = when {
+                    discountAmountValue != null -> BigDecimal(discountAmountValue).divide(BigDecimal(100))
+                    discountPercentValue != null -> totalPrice.multiply(BigDecimal(discountPercentValue)).divide(BigDecimal(100))
+                    else -> BigDecimal.ZERO
+                }
+            }
+
+            val loyaltyTransactions = pointsTransactionRepository.findByUserIdAndType(userId, "REDEMPTION")
+                .filter { it.referenceId == booking.id }
+            val loyaltyPointsUsed = loyaltyTransactions.sumOf { -it.amount }
+            val loyaltyDiscountAmount = BigDecimal(loyaltyPointsUsed / 100)
+
+            val totalDiscount = discountAmount + loyaltyDiscountAmount
+            val finalPrice = totalPrice - totalDiscount
 
             BookingDetailsDTO(
                 bookingId = booking.id,
@@ -157,38 +186,31 @@ class BookingController(
                 promocodeId = booking.promocodeId,
                 promocodeCode = promocode?.code,
                 promocodeDiscountPercent = promocode?.discountPercent,
-                promocodeDiscountAmount = promocode?.discountAmount
+                promocodeDiscountAmount = promocode?.discountAmount,
+                passengerName = passenger?.name,
+                passengerEmail = passenger?.email,
+                paymentMethod = successfulPayment?.let {
+                    "Card •••• ${it.providerPaymentId.takeLast(4)}"
+                } ?: "N/A",
+                paymentDate = successfulPayment?.createdAt,
+                paymentStatus = successfulPayment?.status?.name ?: "N/A",
+                paymentAmount = successfulPayment?.let {
+                    BigDecimal(it.amount).divide(BigDecimal(100))
+                },
+                refundStatus = refundPayment?.status?.name,
+                refundDate = refundPayment?.updatedAt,
+                refundAmount = refundPayment?.let {
+                    BigDecimal(it.amount).divide(BigDecimal(100))
+                },
+                invoiceUrl = "/api/invoices/booking/${booking.id}",
+                ticketUrl = "/ticket/${booking.id}",
+                totalPrice = totalPrice,
+                discountAmount = totalDiscount,
+                finalPrice = finalPrice
             )
         }
 
         return ResponseEntity.ok(result)
-    }
-
-    @PutMapping("/{bookingId}/status")
-    fun updateBookingStatus(
-        principal: Principal,
-        @PathVariable bookingId: Long,
-        @RequestBody request: BookingStatusUpdateRequest
-    ): ResponseEntity<Void> {
-        val user = userRepository.findByEmail(principal.name)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
-
-        val booking = bookingRepository.findById(bookingId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-
-        if (booking.userId != userId) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
-        }
-
-        val result = bookingService.updateBookingStatus(bookingId, request.status)
-        if (result.isSuccess) {
-            notificationSenderService.sendBookingUpdate(userId, bookingId, request.status.name)
-            return ResponseEntity.ok().build()
-        } else {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
-        }
     }
 
     @PostMapping("/{id}/cancel")
@@ -220,6 +242,7 @@ class BookingController(
                 }
             }
 
+            // ✅ ОСВОБОЖДАЕМ МЕСТА
             bookingService.releaseSeats(booking)
 
             booking.status = BookingStatus.CANCELED
@@ -229,7 +252,7 @@ class BookingController(
             notificationSenderService.sendBookingCancelled(userId, booking.id)
 
             ResponseEntity.noContent().build()
-        } catch (ex: Exception) {
+        } catch (_: Exception) {
             ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
     }
@@ -256,11 +279,14 @@ class BookingController(
         }
 
         try {
-            paymentRepository.deleteByBookingId(id)
-        } catch (e: Exception) {
-        }
+            // ✅ ОСВОБОЖДАЕМ МЕСТА
+            bookingService.releaseSeats(booking)
 
-        bookingRepository.deleteById(id)
-        return ResponseEntity.noContent().build()
+            paymentRepository.deleteByBookingId(id)
+            bookingRepository.deleteById(id)
+            return ResponseEntity.noContent().build()
+        } catch (_: Exception) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
     }
 }

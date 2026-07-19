@@ -11,10 +11,10 @@ data class InvoiceResponse(
     val invoiceNumber: String,
     val bookingId: Long,
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy", locale = "en_US")
     val issueDate: String,
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy", locale = "en_US")
     val dueDate: String,
 
     val currency: String,
@@ -28,7 +28,7 @@ data class InvoiceResponse(
     val downloadUrl: String?
 ) {
     companion object {
-        private val dateFormatter = DateTimeFormatter.ofPattern("MM/dd/yyyy")
+        private val dateFormatter = DateTimeFormatter.ofPattern("MM/dd/yyyy", java.util.Locale.US)
 
         fun fromInvoice(invoice: Invoice, downloadUrl: String? = null): InvoiceResponse {
             return InvoiceResponse(

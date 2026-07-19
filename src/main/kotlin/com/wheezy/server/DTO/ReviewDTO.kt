@@ -1,10 +1,9 @@
 package com.wheezy.server.DTO
 
+import com.fasterxml.jackson.annotation.JsonFormat
 import com.wheezy.server.Models.Review
 import java.time.LocalDateTime
 import kotlin.math.roundToInt
-import com.fasterxml.jackson.annotation.JsonFormat
-
 
 data class CreateReviewRequest(
     val bookingId: Long,
@@ -27,15 +26,14 @@ data class ReviewResponse(
     val rating: Int,
     val comment: String?,
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy, HH:mm", locale = "en_US")
     val createdAt: LocalDateTime,
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy, HH:mm", locale = "en_US")
     val updatedAt: LocalDateTime,
 
     val canEdit: Boolean = false
 )
-
 
 data class AirlineRatingResponse(
     val airlineName: String,

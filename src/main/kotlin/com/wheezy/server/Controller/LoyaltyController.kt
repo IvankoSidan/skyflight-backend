@@ -6,6 +6,7 @@ import com.wheezy.server.Models.PendingPointsHold
 import com.wheezy.server.Models.PointsTransaction
 import com.wheezy.server.Models.TierBenefit
 import com.wheezy.server.Repository.*
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -21,6 +22,8 @@ class LoyaltyController(
     private val bookingRepository: BookingRepository,
     private val pendingPointsHoldRepository: PendingPointsHoldRepository
 ) {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     @GetMapping("/points")
     fun getPointsBalance(principal: Principal): ResponseEntity<PointsBalanceResponse> {
@@ -41,19 +44,20 @@ class LoyaltyController(
             ))
         }
 
+        val tier = userPoints.tier ?: "BRONZE"
         val allTiers = tierBenefitRepository.findAllByOrderByMinPointsAsc()
-        val currentTierIndex = allTiers.indexOfFirst { it.tier == userPoints.tier }
+        val currentTierIndex = allTiers.indexOfFirst { it.tier == tier }
         val nextTier = if (currentTierIndex + 1 < allTiers.size) allTiers[currentTierIndex + 1].tier else null
         val pointsToNextTier = if (nextTier != null) {
             allTiers[currentTierIndex + 1].minPoints - userPoints.lifetimePoints
         } else 0
 
-        val currentTierBenefit = tierBenefitRepository.findByTier(userPoints.tier)
+        val currentTierBenefit = tierBenefitRepository.findByTier(tier)
 
         return ResponseEntity.ok(PointsBalanceResponse(
             balance = userPoints.balance,
             lifetimePoints = userPoints.lifetimePoints,
-            tier = userPoints.tier,
+            tier = tier,
             nextTier = nextTier,
             pointsToNextTier = pointsToNextTier.coerceAtLeast(0),
             cashbackPercent = currentTierBenefit?.cashbackPercent ?: 5
@@ -133,12 +137,15 @@ class LoyaltyController(
         principal: Principal,
         @RequestBody request: RedeemPointsRequest
     ): ResponseEntity<RedeemPointsResponse> {
+        log.info("🔄 Redeem request: userId=${principal.name}, bookingId=${request.bookingId}, points=${request.points}")
+
         val user = userRepository.findByEmail(principal.name)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
 
         val userPoints = userPointsRepository.findByUserId(userId).orElse(null)
         if (userPoints == null || userPoints.balance < request.points) {
+            log.warn("⚠️ Not enough points: userId=$userId, balance=${userPoints?.balance}, requested=${request.points}")
             return ResponseEntity.badRequest().body(
                 RedeemPointsResponse(
                     success = false,
@@ -151,6 +158,7 @@ class LoyaltyController(
 
         val booking = bookingRepository.findById(request.bookingId).orElse(null)
         if (booking == null || booking.userId != userId) {
+            log.warn("⚠️ Invalid booking: userId=$userId, bookingId=${request.bookingId}")
             return ResponseEntity.badRequest().body(
                 RedeemPointsResponse(
                     success = false,
@@ -161,7 +169,9 @@ class LoyaltyController(
             )
         }
 
-        if (booking.status != BookingStatus.PENDING_PAYMENT) {
+        // ✅ РАЗРЕШАЕМ ДЛЯ PENDING_PAYMENT И PAID
+        if (booking.status != BookingStatus.PENDING_PAYMENT && booking.status != BookingStatus.PAID) {
+            log.warn("⚠️ Booking cannot be modified: bookingId=${booking.id}, status=${booking.status}")
             return ResponseEntity.badRequest().body(
                 RedeemPointsResponse(
                     success = false,
@@ -174,6 +184,7 @@ class LoyaltyController(
 
         val existingHold = pendingPointsHoldRepository.findByBookingIdAndStatus(booking.id, "ACTIVE")
         if (existingHold != null) {
+            log.warn("⚠️ Points already reserved: bookingId=${booking.id}")
             return ResponseEntity.badRequest().body(
                 RedeemPointsResponse(
                     success = false,
@@ -184,16 +195,22 @@ class LoyaltyController(
             )
         }
 
+        // Замораживаем очки
+        userPointsRepository.freezePoints(userId, request.points)
+        log.info("❄️ Points frozen: userId=$userId, points=${request.points}")
+
+        // Создаем hold
         val hold = PendingPointsHold(
             userId = userId,
             bookingId = booking.id,
             pointsHeld = request.points
         )
         pendingPointsHoldRepository.save(hold)
-
-        userPointsRepository.freezePoints(userId, request.points)
+        log.info("✅ Hold created: bookingId=${booking.id}, userId=$userId, points=${request.points}")
 
         val discountAmount = (request.points / 100) * 100L
+
+        log.info("✅ Redeem success: userId=$userId, bookingId=${booking.id}, discountAmount=$discountAmount")
 
         return ResponseEntity.ok(
             RedeemPointsResponse(

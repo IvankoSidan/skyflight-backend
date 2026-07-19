@@ -56,7 +56,13 @@ class SecurityConfig(
             "/api/health",
             "/api-docs/**",
             "/ticket/**",
-            "/download"
+            "/download",
+            "/download-page",
+            "/my-bookings",
+            "/profile",
+            "/bookings",
+            "/settings",
+            "/uploads/**"
         )
 
         private val PROTECTED_ENDPOINTS = arrayOf(

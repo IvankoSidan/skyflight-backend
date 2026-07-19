@@ -11,6 +11,7 @@ import com.wheezy.server.Models.SavedCard
 import com.wheezy.server.Models.StripeWebhookEvent
 import com.wheezy.server.Models.UserPoints
 import com.wheezy.server.Repository.*
+import com.wheezy.server.Service.BookingService
 import com.wheezy.server.Service.InvoiceService
 import com.wheezy.server.Service.NotificationSenderService
 import jakarta.servlet.http.HttpServletRequest
@@ -35,6 +36,8 @@ class StripeWebhookController(
     private val pointsTransactionRepository: PointsTransactionRepository,
     private val userPointsRepository: UserPointsRepository,
     private val savedCardRepository: SavedCardRepository,
+    private val tierBenefitRepository: TierBenefitRepository,
+    private val bookingService: BookingService,
     @Value("\${stripe.webhook.secret}") private val endpointSecret: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -105,6 +108,8 @@ class StripeWebhookController(
                     val paymentIntent = event.dataObjectDeserializer.`object`.orElse(null) as? PaymentIntent
                     if (paymentIntent != null) {
                         handlePaymentFailure(paymentIntent)
+                    } else {
+                        log.error("Failed to parse payment_intent from event: ${event.id}")
                     }
                 }
                 else -> {}
@@ -133,6 +138,7 @@ class StripeWebhookController(
 
     @Transactional
     fun handlePaymentSuccess(paymentIntent: PaymentIntent) {
+        log.info("🔄 Processing payment success: ${paymentIntent.id}")
         val stripePaymentId = paymentIntent.id
 
         var payment = paymentRepository.findByStripePaymentId(stripePaymentId)
@@ -174,6 +180,7 @@ class StripeWebhookController(
         }
 
         if (payment.status == PaymentStatus.SUCCEEDED) {
+            log.info("Payment already succeeded: ${payment.id}")
             return
         }
 
@@ -188,17 +195,20 @@ class StripeWebhookController(
         payment.stripePaymentId = stripePaymentId
         payment.providerPaymentId = stripePaymentId
         paymentRepository.save(payment)
+        log.info("✅ Payment updated: ${payment.id}")
 
         booking.status = BookingStatus.PAID
         booking.paidAmount = BigDecimal(payment.amount).divide(BigDecimal(100))
         booking.promocodeId = payment.promocodeId
         bookingRepository.save(booking)
+        log.info("✅ Booking updated: ${booking.id}, status=PAID")
 
+        // Начисляем очки за booking
         user.id?.let { userId ->
-            try {
-                val amountInUsd = payment.amount / 100
-                val points = amountInUsd.toInt()
+            val amountInUsd = payment.amount / 100
 
+            val points = amountInUsd.toInt()
+            if (points > 0) {
                 var userPoints = userPointsRepository.findByUserId(userId).orElse(null)
                 if (userPoints == null) {
                     userPoints = UserPoints(
@@ -210,14 +220,10 @@ class StripeWebhookController(
                         updatedAt = LocalDateTime.now()
                     )
                     userPointsRepository.save(userPoints)
+                    log.info("✅ Created new user points: userId=$userId, points=$points")
                 } else {
-                    userPointsRepository.addPoints(userId, points)
-                    val newTier = calculateTier(userPoints.lifetimePoints + points)
-                    if (newTier != userPoints.tier) {
-                        userPoints.tier = newTier
-                        userPointsRepository.save(userPoints)
-                        notificationSenderService.sendTierChangeNotification(userId, userPoints.tier, newTier)
-                    }
+                    userPointsRepository.addPointsWithTierUpdate(userId, points)
+                    log.info("✅ Added points to user: userId=$userId, points=$points")
                 }
 
                 val transaction = PointsTransaction(
@@ -228,14 +234,39 @@ class StripeWebhookController(
                     description = "Flight booking #${booking.id} - $points points earned"
                 )
                 pointsTransactionRepository.save(transaction)
+                log.info("✅ Points transaction saved: userId=$userId, points=$points")
 
                 notificationSenderService.sendPointsAwarded(userId, points, "Flight booking #${booking.id}")
+            }
 
-            } catch (e: Exception) {
-                log.error("Failed to award loyalty points for user $userId", e)
+            val userPoints = userPointsRepository.findByUserId(userId).orElse(null)
+            val tier = userPoints?.tier ?: "BRONZE"
+            val tierBenefit = tierBenefitRepository.findByTier(tier)
+            val cashbackPercent = tierBenefit?.cashbackPercent ?: 0
+
+            if (cashbackPercent > 0) {
+                val cashbackPoints = (amountInUsd * cashbackPercent / 100).toInt()
+                if (cashbackPoints > 0) {
+                    userPointsRepository.addPointsWithTierUpdate(userId, cashbackPoints)
+                    val cashbackTransaction = PointsTransaction(
+                        userId = userId,
+                        amount = cashbackPoints,
+                        type = "CASHBACK",
+                        referenceId = booking.id,
+                        description = "$cashbackPercent% cashback for booking #${booking.id}"
+                    )
+                    pointsTransactionRepository.save(cashbackTransaction)
+                    notificationSenderService.sendPointsAwarded(
+                        userId = userId,
+                        points = cashbackPoints,
+                        reason = "$cashbackPercent% cashback for booking #${booking.id}"
+                    )
+                    log.info("✅ Cashback: $cashbackPoints points awarded to user $userId ($tier tier)")
+                }
             }
         }
 
+        // Сохраняем карту
         try {
             val paymentMethodId = paymentIntent.paymentMethod
             if (paymentMethodId != null && payment.rememberCard) {
@@ -255,6 +286,7 @@ class StripeWebhookController(
                                 isDefault = false
                             )
                             savedCardRepository.save(savedCard)
+                            log.info("✅ Card saved: userId=$userId, last4=${card.last4}")
                         }
                     }
                 }
@@ -263,8 +295,10 @@ class StripeWebhookController(
             log.error("Failed to save card", e)
         }
 
+        // ✅ СПИСЫВАЕМ ОЧКИ (HOLD)
         releasePointsHold(booking.id)
 
+        // Отправляем уведомления
         user.id?.let { userId ->
             try {
                 notificationSenderService.sendBookingConfirmed(userId, booking.id, payment.amount)
@@ -274,6 +308,7 @@ class StripeWebhookController(
             }
         }
 
+        // Генерируем инвойс
         user.id?.let { userId ->
             try {
                 val existingInvoice = invoiceService.getInvoiceByBookingId(userId, booking.id)
@@ -284,65 +319,86 @@ class StripeWebhookController(
                         paymentId = payment.id,
                         currency = payment.currency
                     )
+                    log.info("✅ Invoice generated: bookingId=${booking.id}")
                 }
             } catch (e: Exception) {
                 log.error("Failed to generate invoice", e)
             }
         }
+
+        log.info("✅ Payment success processed: ${payment.id}, booking=${booking.id}")
     }
 
     private fun calculateTier(lifetimePoints: Int): String {
-        return when {
-            lifetimePoints >= 50000 -> "PLATINUM"
-            lifetimePoints >= 10000 -> "GOLD"
-            lifetimePoints >= 3000 -> "SILVER"
-            else -> "BRONZE"
-        }
+        val allTiers = tierBenefitRepository.findAllByOrderByMinPointsAsc()
+        return allTiers.lastOrNull { lifetimePoints >= it.minPoints }?.tier ?: "BRONZE"
     }
 
     private fun releasePointsHold(bookingId: Long) {
+        log.info("🔄 Releasing points hold for booking $bookingId")
+
         try {
             val hold = pendingPointsHoldRepository.findByBookingIdAndStatus(bookingId, "ACTIVE")
             if (hold != null) {
+                log.info("✅ Hold found: bookingId=$bookingId, userId=${hold.userId}, points=${hold.pointsHeld}")
+
                 hold.status = "RELEASED"
                 pendingPointsHoldRepository.save(hold)
 
-                val updated = userPointsRepository.confirmPointsDeduction(hold.userId, hold.pointsHeld)
-                if (updated > 0) {
-                    val transaction = PointsTransaction(
-                        userId = hold.userId,
-                        amount = -hold.pointsHeld,
-                        type = "REDEMPTION",
-                        referenceId = bookingId,
-                        description = "Used ${hold.pointsHeld} points for booking #$bookingId"
-                    )
-                    pointsTransactionRepository.save(transaction)
+                val userPoints = userPointsRepository.findByUserId(hold.userId).orElse(null)
+                if (userPoints != null && userPoints.balance >= hold.pointsHeld) {
+                    val updated = userPointsRepository.confirmPointsDeductionWithTierUpdate(hold.userId, hold.pointsHeld)
+                    if (updated > 0) {
+                        val transaction = PointsTransaction(
+                            userId = hold.userId,
+                            amount = -hold.pointsHeld,
+                            type = "REDEMPTION",
+                            referenceId = bookingId,
+                            description = "Used ${hold.pointsHeld} points for booking #$bookingId"
+                        )
+                        pointsTransactionRepository.save(transaction)
+                        log.info("✅ Points deducted: ${hold.pointsHeld} from user ${hold.userId}")
+                        notificationSenderService.sendPointsDeducted(hold.userId, hold.pointsHeld, "Booking #$bookingId")
+                    } else {
+                        log.warn("⚠️ Failed to deduct points: user=${hold.userId}, points=${hold.pointsHeld}")
+                    }
+                } else {
+                    log.warn("⚠️ Insufficient balance: user=${hold.userId}, balance=${userPoints?.balance}, needed=${hold.pointsHeld}")
                 }
+            } else {
+                log.warn("⚠️ No active hold found for booking $bookingId")
             }
         } catch (e: Exception) {
-            log.error("Error releasing points hold", e)
+            log.error("❌ Error releasing points hold for booking $bookingId", e)
         }
     }
 
     private fun cancelPointsHold(bookingId: Long) {
+        log.info("🔄 Cancelling points hold for booking $bookingId")
+
         try {
             val hold = pendingPointsHoldRepository.findByBookingIdAndStatus(bookingId, "ACTIVE")
             if (hold != null) {
                 hold.status = "CANCELLED"
                 pendingPointsHoldRepository.save(hold)
                 userPointsRepository.unfreezePoints(hold.userId, hold.pointsHeld)
+                notificationSenderService.sendPointsReturned(hold.userId, hold.pointsHeld, "Booking #$bookingId")
+                log.info("✅ Points hold cancelled: bookingId=$bookingId, userId=${hold.userId}, points=${hold.pointsHeld}")
             }
         } catch (e: Exception) {
-            log.error("Error cancelling points hold", e)
+            log.error("❌ Error cancelling points hold", e)
         }
     }
 
     private fun handlePaymentFailure(paymentIntent: PaymentIntent) {
+        log.info("🔄 Processing payment failure: ${paymentIntent.id}")
+
         val stripePaymentId = paymentIntent.id
         val payment = paymentRepository.findByStripePaymentId(stripePaymentId)
             ?: throw IllegalStateException("Payment not found for Stripe ID: $stripePaymentId")
 
         if (payment.status == PaymentStatus.FAILED) {
+            log.info("Payment already failed: ${payment.id}")
             return
         }
 
@@ -356,11 +412,22 @@ class StripeWebhookController(
         payment.failureMessage = paymentIntent.lastPaymentError?.message
         payment.updatedAt = LocalDateTime.now()
         paymentRepository.save(payment)
+        log.info("✅ Payment marked as failed: ${payment.id}")
 
         booking.status = BookingStatus.PENDING_PAYMENT
         bookingRepository.save(booking)
+        log.info("✅ Booking status reset to PENDING_PAYMENT: ${booking.id}")
 
+        // ✅ ОТМЕНЯЕМ HOLD
         cancelPointsHold(booking.id)
+
+        // ✅ ОСВОБОЖДАЕМ МЕСТА ПРИ НЕУДАЧНОМ ПЛАТЕЖЕ
+        try {
+            bookingService.releaseSeats(booking)
+            log.info("✅ Seats released for booking ${booking.id} after failed payment")
+        } catch (e: Exception) {
+            log.error("❌ Failed to release seats for booking ${booking.id}", e)
+        }
 
         user?.let { nonNullUser ->
             nonNullUser.id?.let { userId ->
@@ -375,5 +442,7 @@ class StripeWebhookController(
                 }
             }
         }
+
+        log.info("✅ Payment failure processed: ${payment.id}, booking=${booking.id}")
     }
 }

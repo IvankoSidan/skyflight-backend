@@ -18,7 +18,7 @@ data class PointsTransactionResponse(
     val type: String,
     val description: String?,
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "MM/dd/yyyy, HH:mm", locale = "en_US")
     val createdAt: LocalDateTime
 )
 
