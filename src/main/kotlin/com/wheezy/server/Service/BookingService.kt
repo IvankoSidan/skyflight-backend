@@ -98,17 +98,17 @@ class BookingService(
     @Transactional
     fun releaseSeats(booking: Booking) {
         try {
-            log.info("🔄 Releasing seats for booking ${booking.id}: ${booking.seatNumbers}")
+            log.info("Releasing seats for booking ${booking.id}: ${booking.seatNumbers}")
 
             val flight = flightRepository.findByIdWithPessimisticLock(booking.flightId)
             if (flight == null) {
-                log.warn("⚠️ Flight not found for booking ${booking.id}, flightId=${booking.flightId}")
+                log.warn("Flight not found for booking ${booking.id}, flightId=${booking.flightId}")
                 return
             }
 
             val seatsToRelease = booking.seatNumbers.split(",").map { it.trim() }.filter { it.isNotEmpty() }
             if (seatsToRelease.isEmpty()) {
-                log.warn("⚠️ No seats to release for booking ${booking.id}")
+                log.warn("No seats to release for booking ${booking.id}")
                 return
             }
 
@@ -117,18 +117,18 @@ class BookingService(
                 .filter { it.isNotEmpty() }
                 .toMutableSet()
 
-            log.info("📋 Current reserved seats for flight ${flight.flightId}: $currentReserved")
-            log.info("📋 Seats to release: $seatsToRelease")
+            log.info("Current reserved seats for flight ${flight.flightId}: $currentReserved")
+            log.info("Seats to release: $seatsToRelease")
 
             val updatedReserved = currentReserved.filter { !seatsToRelease.contains(it) }
             flight.reservedSeats = updatedReserved.joinToString(",")
             flightRepository.save(flight)
 
-            log.info("✅ Released seats ${seatsToRelease.joinToString()} for flight ${flight.flightId}")
-            log.info("📋 Updated reserved seats: ${flight.reservedSeats}")
+            log.info("Released seats ${seatsToRelease.joinToString()} for flight ${flight.flightId}")
+            log.info("Updated reserved seats: ${flight.reservedSeats}")
 
         } catch (e: Exception) {
-            log.error("❌ Failed to release seats for booking ${booking.id}", e)
+            log.error("Failed to release seats for booking ${booking.id}", e)
             throw e
         }
     }
@@ -138,12 +138,12 @@ class BookingService(
         try {
             val booking = bookingRepository.findById(bookingId).orElse(null)
             if (booking == null) {
-                log.warn("⚠️ Booking not found: $bookingId")
+                log.warn("Booking not found: $bookingId")
                 return
             }
             releaseSeats(booking)
         } catch (e: Exception) {
-            log.error("❌ Failed to release seats for booking $bookingId", e)
+            log.error("Failed to release seats for booking $bookingId", e)
             throw e
         }
     }

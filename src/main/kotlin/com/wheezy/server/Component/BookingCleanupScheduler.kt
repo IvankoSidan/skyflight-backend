@@ -28,33 +28,44 @@ class BookingCleanupScheduler(
             return
         }
 
-        log.info("🔄 Found ${expiredBookings.size} expired pending bookings")
+        log.info("Found ${expiredBookings.size} expired pending bookings")
 
         var releasedCount = 0
         for (booking in expiredBookings) {
             try {
-                // ✅ ОСВОБОЖДАЕМ МЕСТА
                 bookingService.releaseSeats(booking)
 
                 booking.status = BookingStatus.FAILED
                 booking.canceledAt = LocalDateTime.now()
                 bookingRepository.save(booking)
                 releasedCount++
-                log.info("✅ Released seats for expired booking ${booking.id}")
+                log.info("Released seats for expired booking ${booking.id}")
             } catch (e: Exception) {
-                log.error("❌ Failed to release seats for booking ${booking.id}", e)
+                log.error("Failed to release seats for booking ${booking.id}", e)
             }
         }
 
-        log.info("✅ Released seats for $releasedCount expired bookings")
+        log.info("Released seats for $releasedCount expired bookings")
     }
 
-    // Каждый день в 3 утра удаляем старые CANCELED бронирования
     @Scheduled(cron = "0 0 3 * * ?")
     @Transactional
     fun deleteOldCanceledBookings() {
         val cutoff = LocalDateTime.now().minusDays(30)
-        val deleted = bookingRepository.deleteByStatusAndCanceledAtBefore(BookingStatus.CANCELED, cutoff)
-        log.info("✅ Deleted $deleted old canceled bookings")
+        val bookings = bookingRepository.findByStatusAndCanceledAtBefore(BookingStatus.CANCELED, cutoff)
+
+        var deletedCount = 0
+        for (booking in bookings) {
+            try {
+                bookingService.releaseSeats(booking)
+                bookingRepository.delete(booking)
+                deletedCount++
+                log.info("Deleted old canceled booking ${booking.id}")
+            } catch (e: Exception) {
+                log.error("Failed to delete old booking ${booking.id}", e)
+            }
+        }
+
+        log.info("Deleted $deletedCount old canceled bookings")
     }
 }

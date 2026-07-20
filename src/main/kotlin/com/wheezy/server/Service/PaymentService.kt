@@ -23,6 +23,7 @@ class PaymentService(
     private val userRepository: UserRepository,
     private val flightRepository: FlightRepository,
     private val notificationSenderService: NotificationSenderService,
+    private val bookingService: BookingService,
     @Value("\${stripe.api-key}") stripeKey: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -47,6 +48,7 @@ class PaymentService(
         if (payment == null) {
             booking.status = BookingStatus.CANCELED
             bookingRepository.save(booking)
+            bookingService.releaseSeats(booking)
             notificationSenderService.sendBookingUpdate(userId, booking.id, "CANCELLED")
             return true
         }
@@ -54,6 +56,7 @@ class PaymentService(
         if (payment.status != PaymentStatus.SUCCEEDED) {
             booking.status = BookingStatus.CANCELED
             bookingRepository.save(booking)
+            bookingService.releaseSeats(booking)
             notificationSenderService.sendBookingUpdate(userId, booking.id, "CANCELLED")
             return true
         }
@@ -61,6 +64,7 @@ class PaymentService(
         if (payment.status == PaymentStatus.REFUNDED) {
             booking.status = BookingStatus.CANCELED
             bookingRepository.save(booking)
+            bookingService.releaseSeats(booking)
             return true
         }
 
@@ -98,6 +102,8 @@ class PaymentService(
             booking.canceledAt = LocalDateTime.now()
             bookingRepository.save(booking)
 
+            bookingService.releaseSeats(booking)
+
             notificationSenderService.sendBookingUpdate(userId, booking.id, "CANCELLED")
 
             true
@@ -109,6 +115,7 @@ class PaymentService(
                     paymentRepository.save(payment)
                     booking.status = BookingStatus.CANCELED
                     bookingRepository.save(booking)
+                    bookingService.releaseSeats(booking)
                     true
                 }
                 e.code?.contains("no_successful_charge") == true -> {
@@ -116,6 +123,7 @@ class PaymentService(
                     paymentRepository.save(payment)
                     booking.status = BookingStatus.CANCELED
                     bookingRepository.save(booking)
+                    bookingService.releaseSeats(booking)
                     notificationSenderService.sendBookingUpdate(userId, booking.id, "CANCELLED")
                     true
                 }

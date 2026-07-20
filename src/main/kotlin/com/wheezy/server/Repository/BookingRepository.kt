@@ -23,4 +23,7 @@ interface BookingRepository : JpaRepository<Booking, Long> {
 
     @Query("SELECT b FROM Booking b WHERE b.status = :status AND b.bookingDate < :dateTime")
     fun findByStatusAndBookingDateBefore(@Param("status") status: BookingStatus, @Param("dateTime") dateTime: LocalDateTime): List<Booking>
+
+    @Query("SELECT b FROM Booking b WHERE b.status = :status AND b.canceledAt < :dateTime")
+    fun findByStatusAndCanceledAtBefore(@Param("status") status: BookingStatus, @Param("dateTime") dateTime: LocalDateTime): List<Booking>
 }

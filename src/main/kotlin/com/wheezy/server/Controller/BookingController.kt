@@ -242,7 +242,6 @@ class BookingController(
                 }
             }
 
-            // ✅ ОСВОБОЖДАЕМ МЕСТА
             bookingService.releaseSeats(booking)
 
             booking.status = BookingStatus.CANCELED
@@ -279,7 +278,6 @@ class BookingController(
         }
 
         try {
-            // ✅ ОСВОБОЖДАЕМ МЕСТА
             bookingService.releaseSeats(booking)
 
             paymentRepository.deleteByBookingId(id)
