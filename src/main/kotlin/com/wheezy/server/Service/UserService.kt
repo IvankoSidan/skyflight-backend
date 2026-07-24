@@ -9,6 +9,7 @@ import com.wheezy.server.Models.User
 import com.wheezy.server.Repository.UserNotificationSettingsRepository
 import com.wheezy.server.Repository.UserRepository
 import com.wheezy.server.Security.JwtUtil
+import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -22,6 +23,8 @@ class UserService(
     private val settingsRepository: UserNotificationSettingsRepository,
     private val notificationSenderService: NotificationSenderService
 ) {
+
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     private fun getCountryCodeFromEmail(email: String): String {
         val domain = email.substringAfter("@").substringAfterLast(".")
@@ -68,6 +71,7 @@ class UserService(
             taxRate = taxRate
         )
         val savedUser = userRepository.save(user)
+        logger.info("User registered: id=${savedUser.id}, email=${savedUser.email}")
 
         val userId = savedUser.id ?: throw IllegalStateException("User ID cannot be null")
         val defaultSettings = NotificationSettingsDTO().toEntity(userId)
@@ -88,6 +92,7 @@ class UserService(
         }
 
         val token = jwtUtil.generateToken(user.email)
+        logger.info("User logged in: id=${user.id}, email=${user.email}")
 
         val userId = user.id ?: throw IllegalStateException("User ID cannot be null")
         if (!settingsRepository.existsByUserId(userId)) {
@@ -100,6 +105,8 @@ class UserService(
 
     @Transactional
     fun loginWithGoogle(googleUserDto: GoogleUserDto): Pair<UserResponseDto, String> {
+        logger.info("Google login attempt: email=${googleUserDto.email}, googleId=${googleUserDto.googleId}")
+
         var user = userRepository.findByEmail(googleUserDto.email)
 
         if (user == null) {
@@ -115,15 +122,31 @@ class UserService(
                 taxRate = taxRate
             )
             user = userRepository.save(user)
+            logger.info("Google user CREATED: id=${user.id}, email=${user.email}")
 
             val userId = user.id ?: throw IllegalStateException("User ID cannot be null")
             val defaultSettings = NotificationSettingsDTO().toEntity(userId)
             settingsRepository.save(defaultSettings)
-
+            notificationSenderService.sendWelcomeEmail(userId)
         } else {
-            if (user.googleId == null || user.googleId != googleUserDto.googleId) {
-                val updatedUser = user.copy(googleId = googleUserDto.googleId)
-                user = userRepository.save(updatedUser)
+            var updated = false
+            if (user.googleId != googleUserDto.googleId) {
+                user = user.copy(googleId = googleUserDto.googleId)
+                updated = true
+            }
+            if (user.name != googleUserDto.name) {
+                user = user.copy(name = googleUserDto.name)
+                updated = true
+            }
+            if (user.profilePicture != googleUserDto.profilePicture) {
+                user = user.copy(profilePicture = googleUserDto.profilePicture)
+                updated = true
+            }
+            if (updated) {
+                user = userRepository.save(user)
+                logger.info("Google user UPDATED: id=${user.id}, email=${user.email}")
+            } else {
+                logger.info("Google user FOUND: id=${user.id}, email=${user.email}")
             }
         }
 
@@ -134,11 +157,14 @@ class UserService(
         }
 
         val token = jwtUtil.generateToken(user.email)
+        logger.info("Google login SUCCESS: id=${user.id}, email=${user.email}")
         return Pair(mapToResponseDto(user), token)
     }
 
     fun findByEmail(email: String): User? {
-        return userRepository.findByEmail(email)
+        val user = userRepository.findByEmail(email)
+        logger.info("findByEmail: $email -> ${user?.id}")
+        return user
     }
 
     private fun mapToResponseDto(user: User): UserResponseDto {

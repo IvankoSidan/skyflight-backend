@@ -47,6 +47,7 @@ class BookingController(
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         val userId = user.id ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        val agencyId = user.agencyId ?: 1L
 
         if (!userRepository.existsById(userId)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
@@ -76,7 +77,8 @@ class BookingController(
             userId = userId,
             flightId = dto.flightId,
             seatNumbers = seatNumbers,
-            promocodeId = dto.promocodeId
+            promocodeId = dto.promocodeId,
+            agencyId = agencyId
         )
 
         return if (result.isSuccess) {

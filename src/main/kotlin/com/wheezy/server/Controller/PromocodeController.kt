@@ -27,7 +27,7 @@ class PromocodeController(
         try {
             val count = promocodeRepository.count()
             if (count == 0L) {
-                logger.info("📝 Seeding promocodes...")
+                logger.info("Seeding promocodes...")
                 val promocodes = listOf(
                     Promocode(
                         code = "WELCOME10",
@@ -76,10 +76,10 @@ class PromocodeController(
                     )
                 )
                 promocodeRepository.saveAll(promocodes)
-                logger.info("✅ Promocodes seeded: ${promocodeRepository.count()}")
+                logger.info("Promocodes seeded: ${promocodeRepository.count()}")
             }
         } catch (e: Exception) {
-            logger.error("❌ Failed to seed promocodes", e)
+            logger.error("Failed to seed promocodes", e)
         }
     }
 
@@ -89,9 +89,8 @@ class PromocodeController(
         val amount = request.amount
         val currency = request.currency.uppercase()
 
-        logger.info("🔍 Validating promocode: code=$code, amount=$amount, currency=$currency")
+        logger.info("Validating promocode: code=$code, amount=$amount, currency=$currency")
 
-        // Пытаемся найти промокод через EntityManager (более надёжно)
         var promocode: Promocode? = null
         try {
             val query = entityManager.createQuery(
@@ -104,14 +103,13 @@ class PromocodeController(
             logger.error("Error querying promocode via EntityManager", e)
         }
 
-        // Если не нашли - пробуем через репозиторий
         if (promocode == null) {
             promocode = promocodeRepository.findByCode(code)
         }
 
         if (promocode == null) {
             val count = promocodeRepository.count()
-            logger.warn("❌ Promocode not found: $code. Total promocodes in DB: $count")
+            logger.warn("Promocode not found: $code. Total promocodes in DB: $count")
             return ResponseEntity.ok(
                 PromocodeResponse(
                     id = null,
@@ -125,11 +123,10 @@ class PromocodeController(
             )
         }
 
-        logger.info("✅ Promocode found: ${promocode.code}, id=${promocode.id}")
+        logger.info("Promocode found: ${promocode.code}, id=${promocode.id}")
 
-        // Проверяем активность
         if (!promocode.isActive) {
-            logger.warn("⚠️ Promocode is inactive: ${promocode.code}")
+            logger.warn("Promocode is inactive: ${promocode.code}")
             return ResponseEntity.ok(
                 PromocodeResponse(
                     id = promocode.id,
@@ -145,7 +142,7 @@ class PromocodeController(
 
         val now = LocalDateTime.now()
         if (promocode.validFrom.isAfter(now) || promocode.validUntil.isBefore(now)) {
-            logger.warn("⚠️ Promocode expired: ${promocode.code}")
+            logger.warn("Promocode expired: ${promocode.code}")
             return ResponseEntity.ok(
                 PromocodeResponse(
                     id = promocode.id,
@@ -163,7 +160,7 @@ class PromocodeController(
         val usedCount = promocode.usedCount
 
         if (maxUses != null && usedCount >= maxUses) {
-            logger.warn("⚠️ Promocode max uses exceeded: ${promocode.code}")
+            logger.warn("Promocode max uses exceeded: ${promocode.code}")
             return ResponseEntity.ok(
                 PromocodeResponse(
                     id = promocode.id,
@@ -179,7 +176,7 @@ class PromocodeController(
 
         val minOrderAmount = promocode.minOrderAmount
         if (minOrderAmount != null && amount < minOrderAmount) {
-            logger.warn("⚠️ Minimum order amount not met: $amount < $minOrderAmount")
+            logger.warn("Minimum order amount not met: $amount < $minOrderAmount")
             return ResponseEntity.ok(
                 PromocodeResponse(
                     id = promocode.id,
@@ -194,12 +191,7 @@ class PromocodeController(
         }
 
         val discountedAmount = calculateDiscountedAmount(amount, promocode)
-        logger.info("✅ Promocode applied: ${promocode.code}, discountedAmount=$discountedAmount from $amount")
-
-        // Увеличиваем счётчик использований
-        promocode.usedCount = usedCount + 1
-        promocodeRepository.save(promocode)
-        logger.info("✅ Promocode usage count updated: ${promocode.code}, used=${promocode.usedCount}")
+        logger.info("Promocode applied: ${promocode.code}, discountedAmount=$discountedAmount from $amount")
 
         return ResponseEntity.ok(
             PromocodeResponse(

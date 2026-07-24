@@ -99,7 +99,8 @@ class SecurityConfig(
             .oauth2Login {
                 it.userInfoEndpoint { endpoint ->
                     endpoint.userService(customOAuth2UserService)
-                }.successHandler { _, response, auth ->
+                }
+                it.successHandler { _, response, auth ->
                     val user = auth.principal as org.springframework.security.oauth2.core.user.OAuth2User
                     val email = user.attributes["email"] as String
                     val token = jwtUtil.generateToken(email)

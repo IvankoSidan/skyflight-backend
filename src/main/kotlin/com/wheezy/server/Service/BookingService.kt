@@ -17,8 +17,7 @@ class BookingService(
     private val flightRepository: FlightRepository,
     private val bookingRepository: BookingRepository,
     private val promocodeRepository: PromocodeRepository,
-    private val notificationSenderService: NotificationSenderService,
-    private val agencyId: Long = 0L
+    private val notificationSenderService: NotificationSenderService
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -28,6 +27,7 @@ class BookingService(
         flightId: Long,
         seatNumbers: String,
         promocodeId: Long? = null,
+        agencyId: Long = 0L,
         maxRetries: Int = 3
     ): Result<Booking> {
         var retries = 0
@@ -116,9 +116,6 @@ class BookingService(
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .toMutableSet()
-
-            log.info("Current reserved seats for flight ${flight.flightId}: $currentReserved")
-            log.info("Seats to release: $seatsToRelease")
 
             val updatedReserved = currentReserved.filter { !seatsToRelease.contains(it) }
             flight.reservedSeats = updatedReserved.joinToString(",")

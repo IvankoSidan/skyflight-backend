@@ -59,17 +59,15 @@ class StripeWebhookController(
         if (existingEvent != null) {
             if (existingEvent.processed) {
                 return ResponseEntity.ok("already_processed")
-            } else {
-                log.warn("Webhook in progress, retrying: ${event.id}")
-                Thread.sleep(1000)
-                val retryEvent = eventRepository.findById(event.id).orElse(null)
-                if (retryEvent?.processed == true) {
-                    return ResponseEntity.ok("already_processed_after_retry")
-                }
+            }
+            Thread.sleep(1000)
+            val retryEvent = eventRepository.findById(event.id).orElse(null)
+            if (retryEvent?.processed == true) {
+                return ResponseEntity.ok("already_processed_after_retry")
             }
         }
 
-        var webhookEvent = StripeWebhookEvent(
+        val webhookEvent = StripeWebhookEvent(
             eventId = event.id,
             type = event.type,
             processed = false,
@@ -79,7 +77,6 @@ class StripeWebhookController(
         try {
             eventRepository.save(webhookEvent)
         } catch (e: Exception) {
-            log.error("Failed to save webhook event, possible duplicate: ${event.id}", e)
             val existing = eventRepository.findById(event.id).orElse(null)
             if (existing?.processed == true) {
                 return ResponseEntity.ok("already_processed_concurrent")
@@ -87,10 +84,6 @@ class StripeWebhookController(
             existing?.let {
                 it.retryCount = (it.retryCount ?: 0) + 1
                 eventRepository.save(it)
-                webhookEvent = webhookEvent.copy(
-                    eventId = event.id,
-                    processed = false
-                )
             }
         }
 

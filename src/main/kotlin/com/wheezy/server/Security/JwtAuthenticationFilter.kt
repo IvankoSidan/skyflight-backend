@@ -40,8 +40,18 @@ class JwtAuthenticationFilter(
     ) {
         val authHeader = request.getHeader("Authorization")
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        if (authHeader.isNullOrBlank() || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response)
+            return
+        }
+
+        try {
             val token = authHeader.removePrefix("Bearer ").trim()
+            if (token.isBlank()) {
+                filterChain.doFilter(request, response)
+                return
+            }
+
             val email = jwtUtil.extractUsername(token)
 
             if (!email.isNullOrEmpty() && SecurityContextHolder.getContext().authentication == null) {
@@ -55,6 +65,8 @@ class JwtAuthenticationFilter(
                     SecurityContextHolder.getContext().authentication = authToken
                 }
             }
+        } catch (e: Exception) {
+            logger.debug("Invalid JWT token: ${e.message}")
         }
 
         filterChain.doFilter(request, response)

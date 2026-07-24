@@ -25,9 +25,7 @@ class InvoiceService(
     private val userRepository: UserRepository,
     private val paymentRepository: PaymentRepository,
     private val promocodeRepository: PromocodeRepository,
-    private val invoicePdfService: InvoicePdfService,
-    private val gmailEmailService: GmailApiService,
-    private val emailTemplateService: EmailTemplateService
+    private val invoicePdfService: InvoicePdfService
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val invoiceNumberFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
@@ -201,7 +199,6 @@ class InvoiceService(
         )
 
         try {
-            // ✅ ИСПРАВЛЕНО: проверяем на null перед использованием
             val pdfStream = invoicePdfService.generateInvoicePdf(invoiceData)
             if (pdfStream == null) {
                 log.error("Failed to generate PDF for invoice ${invoice.invoiceNumber}")
@@ -219,8 +216,7 @@ class InvoiceService(
                 return
             }
 
-            // ✅ ИСПРАВЛЕНО: проверяем на null перед отправкой email
-            sendInvoiceEmailWithAttachment(user, invoice, pdfStream)
+            log.info("Invoice generated: ${invoice.invoiceNumber}")
 
         } catch (e: Exception) {
             log.error("Failed to generate PDF for invoice ${invoice.invoiceNumber}", e)
@@ -254,37 +250,7 @@ class InvoiceService(
     }
 
     fun resendInvoiceEmail(userId: Long, bookingId: Long): Boolean {
-        val invoice = getInvoiceByBookingId(userId, bookingId) ?: return false
-        val user = userRepository.findById(userId).orElse(null) ?: return false
-
-        val pdfFile = invoicePdfService.getInvoicePdfFile(invoice.invoiceNumber)
-        if (pdfFile == null || !pdfFile.exists()) {
-            return try {
-                generateAndSendInvoicePdf(invoice)
-                true
-            } catch (e: Exception) {
-                log.error("Failed to regenerate PDF", e)
-                false
-            }
-        }
-
-        return try {
-            val pdfBytes = pdfFile.readBytes()
-            val subject = "Your SkyFlight Invoice #${invoice.invoiceNumber}"
-            val htmlContent = emailTemplateService.invoiceEmail(user, invoice)
-
-            gmailEmailService.sendEmailWithAttachment(
-                to = user.email,
-                subject = subject,
-                htmlContent = htmlContent,
-                attachmentName = "${invoice.invoiceNumber}.pdf",
-                attachmentData = pdfBytes
-            )
-            true
-        } catch (e: Exception) {
-            log.error("Failed to resend invoice email", e)
-            false
-        }
+        return false
     }
 
     private fun getTaxRateForUser(email: String): TaxRate {
@@ -388,27 +354,5 @@ class InvoiceService(
             paidAmount = booking.paidAmount,
             promocodeId = booking.promocodeId
         )
-    }
-
-    private fun sendInvoiceEmailWithAttachment(
-        user: com.wheezy.server.Models.User,
-        invoice: Invoice,
-        pdfStream: java.io.ByteArrayOutputStream
-    ) {
-        try {
-            val subject = "Your SkyFlight Invoice #${invoice.invoiceNumber}"
-            val htmlContent = emailTemplateService.invoiceEmail(user, invoice)
-
-            gmailEmailService.sendEmailWithAttachment(
-                to = user.email,
-                subject = subject,
-                htmlContent = htmlContent,
-                attachmentName = "${invoice.invoiceNumber}.pdf",
-                attachmentData = pdfStream.toByteArray()
-            )
-            log.info("Invoice email sent to ${user.email}")
-        } catch (e: Exception) {
-            log.error("Failed to send invoice email", e)
-        }
     }
 }

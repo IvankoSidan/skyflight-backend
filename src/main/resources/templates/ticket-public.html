@@ -1,1532 +1,826 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>SkyFlight | Electronic Boarding Pass</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <style>
-    /* ============================================
-               RESET & BASE STYLES
-               ============================================ */
-    *,
-    *::before,
-    *::after {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-    }
-
-    :root {
-        --primary: #4A6BFF;
-        --primary-dark: #3A56D4;
-        --primary-light: #6C38FF;
-        --success: #10B981;
-        --warning: #F59E0B;
-        --danger: #EF4444;
-        --gray-50: #F9FAFB;
-        --gray-100: #F3F4F6;
-        --gray-200: #E5E7EB;
-        --gray-300: #D1D5DB;
-        --gray-400: #9CA3AF;
-        --gray-500: #6B7280;
-        --gray-600: #4B5563;
-        --gray-700: #374151;
-        --gray-800: #1F2937;
-        --gray-900: #111827;
-        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-        --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-        --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-        --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-        --radius-sm: 0.375rem;
-        --radius: 0.5rem;
-        --radius-lg: 0.75rem;
-        --radius-xl: 1rem;
-        --radius-2xl: 1.5rem;
-        --radius-3xl: 2rem;
-        --radius-full: 9999px;
-        --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    }
-
-    html {
-        font-size: 16px;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-    }
-
-    body {
-        font-family: var(--font-family);
-        font-size: 0.875rem;
-        line-height: 1.6;
-        color: #FFFFFF;
-        min-height: 100vh;
-        padding: 1.5rem;
-        background: radial-gradient(ellipse at 30% 20%, #0F1628 0%, #080C1A 60%, #04060E 100%);
-        position: relative;
-        /* 🔧 Убираем overflow: hidden — он блокировал прокрутку */
-        overflow-y: auto;
-        overflow-x: hidden;
-        /* 🔧 Меняем display: flex на block, чтобы контент прокручивался */
-        display: block;
-    }
-
-    /* ============================================
-               BACKGROUND EFFECTS — фиксированные
-               ============================================ */
-    body::before {
-        content: '';
-        position: fixed;
-        inset: 0;
-        background:
-            radial-gradient(circle at 20% 30%, rgba(74, 107, 255, 0.08) 0%, transparent 50%),
-            radial-gradient(circle at 80% 70%, rgba(108, 56, 255, 0.06) 0%, transparent 50%),
-            radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.03) 0%, transparent 70%);
-        z-index: 0;
-        pointer-events: none;
-        animation: bgFloat 10s ease-in-out infinite;
-    }
-
-    @keyframes bgFloat {
-        0%,
-        100% {
-            opacity: 0.6;
-            transform: scale(1);
-        }
-        50% {
-            opacity: 1;
-            transform: scale(1.02);
-        }
-    }
-
-    body::after {
-        content: '';
-        position: fixed;
-        inset: 0;
-        background-image:
-            radial-gradient(1px 1px at 10% 20%, rgba(255, 255, 255, 0.3), transparent),
-            radial-gradient(1px 1px at 30% 60%, rgba(255, 255, 255, 0.2), transparent),
-            radial-gradient(1px 1px at 50% 15%, rgba(255, 255, 255, 0.3), transparent),
-            radial-gradient(1px 1px at 70% 75%, rgba(255, 255, 255, 0.2), transparent),
-            radial-gradient(1px 1px at 90% 30%, rgba(255, 255, 255, 0.25), transparent),
-            radial-gradient(2px 2px at 15% 80%, rgba(255, 255, 255, 0.15), transparent),
-            radial-gradient(2px 2px at 60% 45%, rgba(255, 255, 255, 0.15), transparent),
-            radial-gradient(2px 2px at 85% 85%, rgba(255, 255, 255, 0.1), transparent);
-        background-size: 300px 300px;
-        background-repeat: repeat;
-        z-index: 0;
-        pointer-events: none;
-        opacity: 0.4;
-        animation: starDrift 30s linear infinite;
-    }
-
-    @keyframes starDrift {
-        0% {
-            transform: translate(0, 0) rotate(0deg);
-        }
-        100% {
-            transform: translate(-50px, 30px) rotate(360deg);
-        }
-    }
-
-    /* ============================================
-               CONTAINER — центрируем через margin
-               ============================================ */
-    .ticket-wrapper {
-        max-width: 520px;
-        width: 100%;
-        margin: 0 auto;
-        position: relative;
-        z-index: 1;
-        /* 🔧 Добавляем отступы сверху и снизу для прокрутки */
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-    }
-
-    /* ============================================
-               GLASS TICKET (без изменений)
-               ============================================ */
-    .glass-ticket {
-        background: rgba(18, 24, 42, 0.75);
-        backdrop-filter: blur(24px);
-        -webkit-backdrop-filter: blur(24px);
-        border-radius: var(--radius-3xl);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow:
-            0 30px 60px -20px rgba(0, 0, 0, 0.8),
-            inset 0 1px 0 rgba(255, 255, 255, 0.06),
-            0 0 40px rgba(74, 107, 255, 0.04);
-        overflow: hidden;
-        transition: var(--transition);
-        animation: ticketAppear 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-        transform-origin: center;
-    }
-
-    .glass-ticket:hover {
-        border-color: rgba(255, 255, 255, 0.18);
-        box-shadow:
-            0 35px 70px -20px rgba(0, 0, 0, 0.9),
-            inset 0 1px 0 rgba(255, 255, 255, 0.08),
-            0 0 60px rgba(74, 107, 255, 0.06);
-    }
-
-    @keyframes ticketAppear {
-        from {
-            opacity: 0;
-            transform: translateY(30px) scale(0.95);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-        }
-    }
-
-    /* ============================================
-               TICKET HEADER
-               ============================================ */
-    .ticket-header {
-        background: linear-gradient(135deg, var(--primary), var(--primary-light));
-        padding: 2rem 1.75rem 1.75rem;
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .ticket-header::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        right: -30%;
-        width: 80%;
-        height: 200%;
-        background: radial-gradient(ellipse, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
-        transform: rotate(30deg);
-        pointer-events: none;
-    }
-
-    .ticket-header::after {
-        content: '';
-        position: absolute;
-        bottom: -40%;
-        left: -20%;
-        width: 60%;
-        height: 150%;
-        background: radial-gradient(ellipse, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
-        transform: rotate(-20deg);
-        pointer-events: none;
-    }
-
-    .ticket-header h1 {
-        font-size: 2rem;
-        font-weight: 800;
-        letter-spacing: -0.025em;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-        position: relative;
-        z-index: 1;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .ticket-header h1 i {
-        font-size: 1.5rem;
-    }
-
-    .ticket-header .subtitle {
-        font-size: 0.8125rem;
-        opacity: 0.85;
-        margin-top: 0.25rem;
-        position: relative;
-        z-index: 1;
-        font-weight: 400;
-    }
-
-    /* ============================================
-               STATUS CHIP
-               ============================================ */
-    .status-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: rgba(0, 0, 0, 0.35);
-        backdrop-filter: blur(8px);
-        padding: 0.5rem 1.5rem;
-        border-radius: var(--radius-full);
-        font-weight: 700;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-top: 1rem;
-        position: relative;
-        z-index: 1;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        transition: var(--transition);
-    }
-
-    .status-chip:hover {
-        transform: scale(1.02);
-    }
-
-    .status-chip i {
-        font-size: 0.875rem;
-    }
-
-    .status-chip.status-confirmed {
-        background: rgba(16, 185, 129, 0.25);
-        border-color: rgba(16, 185, 129, 0.3);
-        box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
-    }
-
-    .status-chip.status-paid {
-        background: rgba(74, 107, 255, 0.25);
-        border-color: rgba(74, 107, 255, 0.3);
-        box-shadow: 0 0 20px rgba(74, 107, 255, 0.15);
-    }
-
-    .status-chip.status-pending {
-        background: rgba(245, 158, 11, 0.25);
-        border-color: rgba(245, 158, 11, 0.3);
-        box-shadow: 0 0 20px rgba(245, 158, 11, 0.15);
-        animation: pendingPulse 2s ease-in-out infinite;
-    }
-
-    @keyframes pendingPulse {
-        0%,
-        100% {
-            box-shadow: 0 0 20px rgba(245, 158, 11, 0.15);
-        }
-        50% {
-            box-shadow: 0 0 30px rgba(245, 158, 11, 0.25);
-        }
-    }
-
-    .status-chip.status-cancelled {
-        background: rgba(239, 68, 68, 0.25);
-        border-color: rgba(239, 68, 68, 0.3);
-        box-shadow: 0 0 20px rgba(239, 68, 68, 0.15);
-    }
-
-    /* ============================================
-               TICKET BODY
-               ============================================ */
-    .ticket-body {
-        padding: 1.75rem 1.75rem 2rem;
-    }
-
-    /* ============================================
-               AIRLINE ROW
-               ============================================ */
-    .airline-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .airline-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: rgba(255, 255, 255, 0.06);
-        padding: 0.5rem 1.25rem;
-        border-radius: var(--radius-full);
-        font-weight: 600;
-        font-size: 0.875rem;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        transition: var(--transition);
-    }
-
-    .airline-badge:hover {
-        background: rgba(255, 255, 255, 0.1);
-        transform: translateY(-1px);
-    }
-
-    .airline-badge i {
-        color: var(--primary-light);
-    }
-
-    .price-big {
-        font-size: 2rem;
-        font-weight: 800;
-        color: #FCD34D;
-        letter-spacing: -0.025em;
-        text-shadow: 0 2px 8px rgba(252, 211, 77, 0.15);
-        transition: var(--transition);
-    }
-
-    .price-big:hover {
-        transform: scale(1.02);
-    }
-
-    .price-big .price-currency {
-        font-size: 1.25rem;
-        font-weight: 600;
-    }
-
-    /* ============================================
-               FLIGHT ROUTE
-               ============================================ */
-    .flight-route {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin: 1.75rem 0;
-        padding: 1.25rem 0;
-        border-top: 1px solid rgba(255, 255, 255, 0.06);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .city-box {
-        text-align: center;
-        flex: 1;
-    }
-
-    .city-code {
-        font-size: 2.25rem;
-        font-weight: 800;
-        letter-spacing: 0.05em;
-        background: linear-gradient(135deg, #FFFFFF, #C4B5FD);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        line-height: 1.2;
-    }
-
-    .city-full {
-        font-size: 0.75rem;
-        opacity: 0.6;
-        margin-top: 0.25rem;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-    }
-
-    .route-line {
-        flex: 0.7;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.25rem;
-        padding: 0 0.5rem;
-    }
-
-    .route-line .route-arrow {
-        font-size: 1.5rem;
-        color: var(--primary-light);
-        animation: arrowPulse 2s ease-in-out infinite;
-    }
-
-    @keyframes arrowPulse {
-        0%,
-        100% {
-            transform: translateX(0);
-            opacity: 0.6;
-        }
-        50% {
-            transform: translateX(4px);
-            opacity: 1;
-        }
-    }
-
-    .route-line .flight-time-small {
-        font-size: 0.625rem;
-        opacity: 0.4;
-        font-weight: 500;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-    }
-
-    /* ============================================
-               DETAILS GRID
-               ============================================ */
-    .details-grid {
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: var(--radius-xl);
-        padding: 1.25rem;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.75rem 1.5rem;
-        margin: 1.5rem 0;
-        border: 1px solid rgba(255, 255, 255, 0.04);
-        transition: var(--transition);
-    }
-
-    .details-grid:hover {
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    }
-
-    .detail {
-        display: flex;
-        flex-direction: column;
-        gap: 0.125rem;
-    }
-
-    .detail-label {
-        font-size: 0.625rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        opacity: 0.4;
-        font-weight: 600;
-    }
-
-    .detail-value {
-        font-weight: 700;
-        font-size: 0.9375rem;
-        color: #E8EDF5;
-        letter-spacing: 0.01em;
-    }
-
-    .detail-value .seat-badge {
-        display: inline-block;
-        background: rgba(74, 107, 255, 0.2);
-        padding: 0.125rem 0.625rem;
-        border-radius: var(--radius-sm);
-        font-size: 0.8125rem;
-        border: 1px solid rgba(74, 107, 255, 0.15);
-        color: var(--primary-light);
-    }
-
-    /* ============================================
-               QR CODE SECTION
-               ============================================ */
-    .qr-container {
-        background: rgba(255, 255, 255, 0.04);
-        border-radius: var(--radius-xl);
-        padding: 0.75rem 1rem 0.75rem 0.75rem;
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        margin: 1.25rem 0;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        transition: var(--transition);
-        cursor: pointer;
-    }
-
-    .qr-container:hover {
-        background: rgba(255, 255, 255, 0.07);
-        border-color: rgba(255, 255, 255, 0.12);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-    }
-
-    .qr-box {
-        width: 4.5rem;
-        height: 4.5rem;
-        background: white;
-        border-radius: var(--radius);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #1A1F35;
-        font-size: 2.5rem;
-        flex-shrink: 0;
-        transition: var(--transition);
-        position: relative;
-    }
-
-    .qr-box::after {
-        content: '';
-        position: absolute;
-        inset: 2px;
-        border-radius: calc(var(--radius) - 2px);
-        border: 2px solid rgba(0, 0, 0, 0.04);
-        pointer-events: none;
-    }
-
-    .qr-box i {
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
-    }
-
-    .qr-info {
-        flex: 1;
-        font-size: 0.75rem;
-        opacity: 0.7;
-        line-height: 1.5;
-    }
-
-    .qr-info strong {
-        color: #FFFFFF;
-        opacity: 1;
-        font-weight: 700;
-    }
-
-    .qr-info .booking-id {
-        display: block;
-        font-family: 'Inter', monospace;
-        font-size: 0.8125rem;
-        letter-spacing: 0.05em;
-        color: #C4B5FD;
-        margin-top: 0.125rem;
-    }
-
-    /* ============================================
-               BARCODE STRIP
-               ============================================ */
-    .barcode-strip {
-        margin-top: 1rem;
-        text-align: center;
-        font-family: 'Courier New', monospace;
-        font-size: 0.75rem;
-        letter-spacing: 0.1em;
-        opacity: 0.3;
-        border-top: 1px dashed rgba(255, 255, 255, 0.08);
-        padding-top: 1rem;
-        overflow: hidden;
-        white-space: nowrap;
-        user-select: none;
-    }
-
-    .barcode-strip span {
-        display: inline-block;
-        animation: barcodeScroll 20s linear infinite;
-    }
-
-    @keyframes barcodeScroll {
-        0% {
-            transform: translateX(0);
-        }
-        100% {
-            transform: translateX(-50%);
-        }
-    }
-
-    /* ============================================
-               ACTION BUTTONS
-               ============================================ */
-    .action-buttons {
-        display: flex;
-        gap: 0.75rem;
-        margin-top: 1.5rem;
-    }
-
-    .btn-glass {
-        flex: 1;
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: var(--radius-full);
-        padding: 0.75rem 1rem;
-        text-align: center;
-        font-weight: 600;
-        font-size: 0.8125rem;
-        cursor: pointer;
-        transition: var(--transition);
-        backdrop-filter: blur(4px);
-        color: #E2E8F0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-    }
-
-    .btn-glass:hover {
-        background: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.2);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-    }
-
-    .btn-glass:active {
-        transform: scale(0.97) translateY(0);
-    }
-
-    .btn-glass i {
-        font-size: 0.875rem;
-    }
-
-    .btn-primary-glass {
-        background: linear-gradient(135deg, var(--primary-light), var(--primary));
-        border: none;
-        color: white;
-        box-shadow: 0 8px 24px rgba(74, 107, 255, 0.25);
-    }
-
-    .btn-primary-glass:hover {
-        box-shadow: 0 12px 32px rgba(74, 107, 255, 0.35);
-        transform: translateY(-2px);
-        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-    }
-
-    /* ============================================
-               FOOTER
-               ============================================ */
-    .ticket-footer {
-        text-align: center;
-        margin-top: 1.25rem;
-        font-size: 0.625rem;
-        opacity: 0.3;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-        letter-spacing: 0.02em;
-    }
-
-    .ticket-footer i {
-        font-size: 0.625rem;
-    }
-
-    /* ============================================
-               TOAST NOTIFICATION
-               ============================================ */
-    .toast {
-        position: fixed;
-        bottom: 2rem;
-        left: 50%;
-        transform: translateX(-50%);
-        max-width: 90%;
-        width: 480px;
-        background: rgba(0, 0, 0, 0.9);
-        backdrop-filter: blur(24px);
-        border-radius: var(--radius-full);
-        padding: 0.875rem 1.5rem;
-        text-align: center;
-        font-weight: 500;
-        font-size: 0.875rem;
-        color: white;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        z-index: 9999;
-        opacity: 0;
-        transform: translateX(-50%) translateY(20px);
-        transition: opacity 0.4s ease, transform 0.4s ease;
-        pointer-events: none;
-        box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.5);
-    }
-
-    .toast.show {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
-    }
-
-    /* ============================================
-               RESPONSIVE DESIGN
-               ============================================ */
-    @media (max-width: 768px) {
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <title>SkyFlight · Electronic Boarding Pass</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            padding: 1rem;
+          font-family: 'Inter', sans-serif;
+          min-height: 100vh;
+          padding: 1.5rem;
+          background: radial-gradient(ellipse at 20% 10%, #0F1A3A 0%, #080C1A 50%, #03050A 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #FFFFFF;
         }
-
+        .ticket-wrapper { max-width: 520px; width: 100%; margin: 0 auto; }
         .glass-ticket {
-            border-radius: var(--radius-2xl);
+          background: rgba(18, 24, 42, 0.70);
+          backdrop-filter: blur(28px);
+          border-radius: 2rem;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.9);
+          overflow: hidden;
+          transition: all 0.4s ease;
         }
-
-        .ticket-header {
-            padding: 1.5rem 1.25rem;
-        }
-
-        .ticket-header h1 {
-            font-size: 1.625rem;
-        }
-
-        .ticket-body {
-            padding: 1.5rem 1.25rem;
-        }
-
-        .city-code {
-            font-size: 1.75rem;
-        }
-
-        .price-big {
-            font-size: 1.625rem;
-        }
-
-        .details-grid {
-            padding: 1rem;
-            gap: 0.5rem 1rem;
-        }
-
-        .detail-value {
-            font-size: 0.875rem;
-        }
-
-        .qr-box {
-            width: 3.75rem;
-            height: 3.75rem;
-            font-size: 2rem;
-        }
-
-        .action-buttons {
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .btn-glass {
-            padding: 0.625rem 1rem;
-            font-size: 0.8125rem;
-        }
-    }
-
-    @media (max-width: 480px) {
-        body {
-            padding: 0.75rem;
-        }
-
-        .glass-ticket {
-            border-radius: var(--radius-xl);
-        }
-
-        .ticket-header {
-            padding: 1.25rem 1rem 1.25rem;
-        }
-
-        .ticket-header h1 {
-            font-size: 1.375rem;
-        }
-
-        .ticket-header h1 i {
-            font-size: 1.125rem;
-        }
-
-        .ticket-header .subtitle {
-            font-size: 0.6875rem;
-        }
-
-        .ticket-body {
-            padding: 1rem 1rem 1.5rem;
-        }
-
-        .airline-row {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 0.5rem;
-        }
-
-        .airline-badge {
-            justify-content: center;
-            font-size: 0.8125rem;
-        }
-
-        .price-big {
-            text-align: center;
-            font-size: 1.5rem;
-        }
-
-        .flight-route {
-            margin: 1.25rem 0;
-            padding: 1rem 0;
-        }
-
-        .city-code {
-            font-size: 1.5rem;
-        }
-
-        .city-full {
-            font-size: 0.6875rem;
-        }
-
-        .route-line .route-arrow {
-            font-size: 1.125rem;
-        }
-
-        .route-line .flight-time-small {
-            font-size: 0.5rem;
-        }
-
-        .details-grid {
-            grid-template-columns: 1fr 1fr;
-            gap: 0.5rem 0.75rem;
-            padding: 0.875rem;
-            border-radius: var(--radius-lg);
-        }
-
-        .detail-label {
-            font-size: 0.5rem;
-        }
-
-        .detail-value {
-            font-size: 0.8125rem;
-        }
-
-        .detail-value .seat-badge {
-            font-size: 0.6875rem;
-            padding: 0.0625rem 0.5rem;
-        }
-
-        .qr-container {
-            padding: 0.625rem;
-            gap: 0.75rem;
-            border-radius: var(--radius-lg);
-        }
-
-        .qr-box {
-            width: 3.25rem;
-            height: 3.25rem;
-            font-size: 1.5rem;
-        }
-
-        .qr-info {
-            font-size: 0.6875rem;
-        }
-
-        .qr-info .booking-id {
-            font-size: 0.6875rem;
-        }
-
-        .status-chip {
-            font-size: 0.625rem;
-            padding: 0.375rem 1rem;
-            gap: 0.375rem;
-        }
-
-        .status-chip i {
-            font-size: 0.625rem;
-        }
-
-        .barcode-strip {
-            font-size: 0.5rem;
-            padding-top: 0.75rem;
-            margin-top: 0.75rem;
-        }
-
-        .action-buttons {
-            gap: 0.5rem;
-            margin-top: 1rem;
-        }
-
-        .btn-glass {
-            font-size: 0.75rem;
-            padding: 0.5rem 0.75rem;
-            gap: 0.375rem;
-        }
-
-        .btn-glass i {
-            font-size: 0.75rem;
-        }
-
-        .ticket-footer {
-            font-size: 0.5rem;
-            margin-top: 0.75rem;
-        }
-
-        .toast {
-            padding: 0.625rem 1rem;
-            font-size: 0.75rem;
-            bottom: 1rem;
-            width: calc(100% - 2rem);
-        }
-    }
-
-    @media (max-width: 360px) {
-        .ticket-header h1 {
-            font-size: 1.25rem;
-        }
-
-        .city-code {
-            font-size: 1.25rem;
-        }
-
-        .price-big {
-            font-size: 1.25rem;
-        }
-
-        .details-grid {
-            grid-template-columns: 1fr;
-            gap: 0.375rem;
-        }
-
-        .detail {
-            flex-direction: row;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .detail-label {
-            font-size: 0.5rem;
-        }
-
-        .detail-value {
-            font-size: 0.75rem;
-        }
-    }
-
-    /* ============================================
-               DARK MODE SUPPORT
-               ============================================ */
-    @media (prefers-color-scheme: light) {
-        body {
-            background: radial-gradient(ellipse at 30% 20%, #E8ECF6 0%, #D5DCE8 60%, #C5CDDE 100%);
-        }
-
-        body::before {
-            background:
-                radial-gradient(circle at 20% 30%, rgba(74, 107, 255, 0.12) 0%, transparent 50%),
-                radial-gradient(circle at 80% 70%, rgba(108, 56, 255, 0.08) 0%, transparent 50%);
-        }
-
-        .glass-ticket {
-            background: rgba(255, 255, 255, 0.7);
-            border-color: rgba(255, 255, 255, 0.3);
-            box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.15);
-        }
-
         .glass-ticket:hover {
-            border-color: rgba(255, 255, 255, 0.5);
+          border-color: rgba(255, 255, 255, 0.16);
+          transform: translateY(-3px) scale(1.01);
         }
-
         .ticket-header {
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+          background: linear-gradient(135deg, #4A6BFF, #6C38FF);
+          padding: 2rem 1.75rem 1.75rem;
+          text-align: center;
+          position: relative;
+          overflow: hidden;
         }
-
-        .ticket-body {
-            color: #1A1F35;
+        .ticket-header::before {
+          content: '';
+          position: absolute;
+          top: -50%;
+          right: -30%;
+          width: 80%;
+          height: 200%;
+          background: radial-gradient(ellipse, rgba(255,255,255,0.10) 0%, transparent 70%);
+          transform: rotate(30deg);
+          pointer-events: none;
         }
-
+        .ticket-header h1 { font-size: 2rem; font-weight: 800; position: relative; z-index: 1; }
+        .ticket-header h1 i { margin-right: 0.5rem; }
+        .subtitle { font-size: 0.8125rem; opacity: 0.85; margin-top: 0.25rem; position: relative; z-index: 1; }
+        .status-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          background: rgba(0, 0, 0, 0.35);
+          backdrop-filter: blur(8px);
+          padding: 0.5rem 1.5rem;
+          border-radius: 9999px;
+          font-weight: 700;
+          font-size: 0.75rem;
+          text-transform: uppercase;
+          margin-top: 1rem;
+          border: 1px solid rgba(255,255,255,0.10);
+          position: relative;
+          z-index: 1;
+          transition: all 0.3s ease;
+        }
+        .status-chip:hover { transform: scale(1.04); }
+        .status-chip.status-paid {
+          background: rgba(16, 185, 129, 0.25);
+          border-color: rgba(16, 185, 129, 0.30);
+          box-shadow: 0 0 30px rgba(16, 185, 129, 0.15);
+        }
+        .status-chip.status-confirmed {
+          background: rgba(74, 107, 255, 0.25);
+          border-color: rgba(74, 107, 255, 0.30);
+          box-shadow: 0 0 30px rgba(74, 107, 255, 0.15);
+        }
+        .status-chip.status-pending {
+          background: rgba(245, 158, 11, 0.25);
+          border-color: rgba(245, 158, 11, 0.30);
+          box-shadow: 0 0 30px rgba(245, 158, 11, 0.15);
+        }
+        .status-chip.status-cancelled {
+          background: rgba(239, 68, 68, 0.25);
+          border-color: rgba(239, 68, 68, 0.30);
+          box-shadow: 0 0 30px rgba(239, 68, 68, 0.15);
+        }
+        .ticket-body { padding: 1.75rem; }
+        .airline-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 0.75rem;
+          margin-bottom: 1.5rem;
+        }
+        .airline-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          background: rgba(255,255,255,0.06);
+          padding: 0.5rem 1.25rem;
+          border-radius: 9999px;
+          font-weight: 600;
+          font-size: 0.875rem;
+          border: 1px solid rgba(255,255,255,0.06);
+          transition: all 0.3s ease;
+        }
+        .airline-badge:hover {
+          background: rgba(255,255,255,0.12);
+          transform: translateY(-2px);
+        }
+        .airline-badge i { color: #6C38FF; }
+        .price-block {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 0.25rem;
+        }
+        .price-final {
+          font-size: 2rem;
+          font-weight: 800;
+          color: #FCD34D;
+          text-shadow: 0 2px 12px rgba(252, 211, 77, 0.20);
+        }
+        .price-original {
+          font-size: 0.875rem;
+          text-decoration: line-through;
+          opacity: 0.5;
+          color: #9CA3AF;
+        }
+        .price-discount {
+          font-size: 0.75rem;
+          color: #34D399;
+          background: rgba(16, 185, 129, 0.15);
+          padding: 0.125rem 0.75rem;
+          border-radius: 9999px;
+          border: 1px solid rgba(16, 185, 129, 0.20);
+        }
+        .flight-route {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin: 1.75rem 0;
+          padding: 1.25rem 0;
+          border-top: 1px solid rgba(255,255,255,0.06);
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          position: relative;
+        }
+        .flight-route::before {
+          content: '';
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 60%;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent);
+          pointer-events: none;
+        }
+        .city-box { text-align: center; flex: 1; position: relative; z-index: 1; }
         .city-code {
+          font-size: 2.25rem;
+          font-weight: 800;
+          background: linear-gradient(135deg, #FFFFFF, #C4B5FD);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          line-height: 1.2;
+          transition: all 0.3s ease;
+        }
+        .city-box:hover .city-code { transform: scale(1.05); }
+        .city-full { font-size: 0.75rem; opacity: 0.6; margin-top: 0.25rem; font-weight: 500; }
+        .route-line {
+          flex: 0.7;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.25rem;
+          padding: 0 0.5rem;
+          position: relative;
+          z-index: 1;
+        }
+        .route-line .route-arrow {
+          font-size: 1.5rem;
+          color: #6C38FF;
+          animation: arrowPulse 2s ease-in-out infinite;
+        }
+        @keyframes arrowPulse {
+          0%, 100% { transform: translateX(0); opacity: 0.6; }
+          50% { transform: translateX(6px); opacity: 1; }
+        }
+        .route-line .flight-time-small {
+          font-size: 0.625rem;
+          opacity: 0.4;
+          font-weight: 500;
+          text-transform: uppercase;
+        }
+        .details-grid {
+          background: rgba(0, 0, 0, 0.30);
+          border-radius: 1rem;
+          padding: 1.25rem;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0.75rem 1.5rem;
+          margin: 1.5rem 0;
+          border: 1px solid rgba(255,255,255,0.04);
+          transition: all 0.3s ease;
+        }
+        .details-grid:hover {
+          border-color: rgba(255,255,255,0.10);
+          transform: translateY(-2px);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+        }
+        .detail { display: flex; flex-direction: column; gap: 0.125rem; }
+        .detail-label {
+          font-size: 0.625rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          opacity: 0.4;
+          font-weight: 600;
+        }
+        .detail-value {
+          font-weight: 700;
+          font-size: 0.9375rem;
+          color: #E8EDF5;
+          letter-spacing: 0.01em;
+        }
+        .detail-value .seat-badge {
+          display: inline-block;
+          background: rgba(74, 107, 255, 0.20);
+          padding: 0.125rem 0.625rem;
+          border-radius: 0.375rem;
+          font-size: 0.8125rem;
+          border: 1px solid rgba(74, 107, 255, 0.15);
+          color: #6C38FF;
+          transition: all 0.3s ease;
+        }
+        .detail-value .seat-badge:hover {
+          background: rgba(74, 107, 255, 0.30);
+          transform: scale(1.05);
+        }
+        .qr-container {
+          background: rgba(255,255,255,0.04);
+          border-radius: 1rem;
+          padding: 0.75rem 1rem 0.75rem 0.75rem;
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          margin: 1.25rem 0;
+          border: 1px solid rgba(255,255,255,0.06);
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+        .qr-container:hover {
+          background: rgba(255,255,255,0.08);
+          border-color: rgba(255,255,255,0.14);
+          transform: translateY(-3px) scale(1.01);
+          box-shadow: 0 12px 36px rgba(0,0,0,0.3);
+        }
+        .qr-box {
+          width: 4.5rem;
+          height: 4.5rem;
+          background: white;
+          border-radius: 0.5rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #1A1F35;
+          font-size: 2.5rem;
+          flex-shrink: 0;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          transition: all 0.3s ease;
+        }
+        .qr-container:hover .qr-box { transform: scale(1.05); }
+        .qr-info {
+          flex: 1;
+          font-size: 0.75rem;
+          opacity: 0.7;
+          line-height: 1.5;
+        }
+        .qr-info strong { color: #FFFFFF; opacity: 1; font-weight: 700; }
+        .qr-info .booking-id {
+          display: block;
+          font-family: 'Inter', monospace;
+          font-size: 0.8125rem;
+          letter-spacing: 0.05em;
+          color: #C4B5FD;
+          margin-top: 0.125rem;
+        }
+        .barcode-strip {
+          margin-top: 1rem;
+          text-align: center;
+          font-family: 'Courier New', monospace;
+          font-size: 0.75rem;
+          letter-spacing: 0.1em;
+          opacity: 0.25;
+          border-top: 1px dashed rgba(255,255,255,0.08);
+          padding-top: 1rem;
+          overflow: hidden;
+          white-space: nowrap;
+          user-select: none;
+        }
+        .barcode-strip span {
+          display: inline-block;
+          animation: barcodeScroll 24s linear infinite;
+        }
+        @keyframes barcodeScroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .action-buttons {
+          display: flex;
+          gap: 0.75rem;
+          margin-top: 1.5rem;
+        }
+        .btn-glass {
+          flex: 1;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: 9999px;
+          padding: 0.75rem 1rem;
+          text-align: center;
+          font-weight: 600;
+          font-size: 0.8125rem;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          backdrop-filter: blur(4px);
+          color: #E2E8F0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+        }
+        .btn-glass:hover {
+          background: rgba(255,255,255,0.14);
+          border-color: rgba(255,255,255,0.22);
+          transform: translateY(-3px) scale(1.02);
+          box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+        }
+        .btn-glass:active { transform: scale(0.96) translateY(0); }
+        .btn-primary-glass {
+          background: linear-gradient(135deg, #6C38FF, #4A6BFF);
+          border: none;
+          color: white;
+          box-shadow: 0 8px 32px rgba(74, 107, 255, 0.30);
+        }
+        .btn-primary-glass:hover {
+          box-shadow: 0 12px 48px rgba(74, 107, 255, 0.45);
+        }
+        .ticket-footer {
+          text-align: center;
+          margin-top: 1.25rem;
+          font-size: 0.625rem;
+          opacity: 0.3;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+        }
+        .ticket-footer i { font-size: 0.625rem; }
+        .toast {
+          position: fixed;
+          bottom: 2rem;
+          left: 50%;
+          transform: translateX(-50%);
+          max-width: 90%;
+          width: 480px;
+          background: rgba(0,0,0,0.92);
+          backdrop-filter: blur(24px);
+          border-radius: 9999px;
+          padding: 0.875rem 1.5rem;
+          text-align: center;
+          font-weight: 500;
+          font-size: 0.875rem;
+          color: white;
+          border: 1px solid rgba(255,255,255,0.08);
+          z-index: 9999;
+          opacity: 0;
+          transform: translateX(-50%) translateY(24px);
+          transition: opacity 0.4s ease, transform 0.4s ease;
+          pointer-events: none;
+          box-shadow: 0 24px 56px -16px rgba(0,0,0,0.6);
+        }
+        .toast.show {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+          pointer-events: auto;
+        }
+        @media (max-width: 768px) {
+          body { padding: 1rem; }
+          .ticket-header { padding: 1.5rem 1.25rem; }
+          .ticket-header h1 { font-size: 1.625rem; }
+          .ticket-body { padding: 1.5rem 1.25rem; }
+          .city-code { font-size: 1.75rem; }
+          .price-final { font-size: 1.625rem; }
+          .details-grid { padding: 1rem; gap: 0.5rem 1rem; }
+          .qr-box { width: 3.75rem; height: 3.75rem; font-size: 2rem; }
+          .action-buttons { flex-direction: column; gap: 0.5rem; }
+        }
+        @media (max-width: 480px) {
+          body { padding: 0.75rem; }
+          .ticket-header { padding: 1.25rem 1rem; }
+          .ticket-header h1 { font-size: 1.375rem; }
+          .ticket-body { padding: 1rem 1rem 1.5rem; }
+          .airline-row { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+          .airline-badge { justify-content: center; }
+          .price-block { align-items: center; }
+          .flight-route { margin: 1.25rem 0; padding: 1rem 0; flex-wrap: wrap; gap: 0.5rem; }
+          .city-code { font-size: 1.5rem; }
+          .route-line .route-arrow { font-size: 1.125rem; }
+          .details-grid { grid-template-columns: 1fr 1fr; gap: 0.5rem 0.75rem; padding: 0.875rem; }
+          .detail { gap: 0.0625rem; }
+          .detail-value { font-size: 0.8125rem; }
+          .qr-container { padding: 0.625rem; gap: 0.75rem; }
+          .qr-box { width: 3.25rem; height: 3.25rem; font-size: 1.5rem; }
+          .qr-info { font-size: 0.6875rem; }
+          .barcode-strip { font-size: 0.5rem; padding-top: 0.75rem; margin-top: 0.75rem; }
+          .btn-glass { font-size: 0.75rem; padding: 0.5rem 0.75rem; }
+          .toast { padding: 0.625rem 1rem; font-size: 0.75rem; bottom: 1rem; width: calc(100% - 2rem); }
+        }
+        @media (max-width: 360px) {
+          .ticket-header h1 { font-size: 1.25rem; }
+          .city-code { font-size: 1.25rem; }
+          .price-final { font-size: 1.25rem; }
+          .details-grid { grid-template-columns: 1fr; gap: 0.375rem; }
+          .detail { flex-direction: row; justify-content: space-between; align-items: center; }
+          .detail-label { font-size: 0.5rem; }
+          .detail-value { font-size: 0.75rem; }
+        }
+        @media (prefers-color-scheme: light) {
+          body { background: radial-gradient(ellipse at 20% 10%, #E8ECF6 0%, #D5DCE8 60%, #C5CDDE 100%); }
+          .glass-ticket {
+            background: rgba(255,255,255,0.72);
+            border-color: rgba(255,255,255,0.35);
+            box-shadow: 0 40px 80px -20px rgba(0,0,0,0.12);
+          }
+          .glass-ticket:hover { border-color: rgba(255,255,255,0.55); }
+          .ticket-body { color: #1A1F35; }
+          .city-code {
             background: linear-gradient(135deg, #1A1F35, #4A6BFF);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-        }
-
-        .city-full {
-            color: rgba(0, 0, 0, 0.5);
-        }
-
-        .airline-badge {
-            background: rgba(0, 0, 0, 0.05);
-            border-color: rgba(0, 0, 0, 0.06);
+          }
+          .city-full { color: rgba(0,0,0,0.5); }
+          .airline-badge {
+            background: rgba(0,0,0,0.04);
+            border-color: rgba(0,0,0,0.06);
             color: #1A1F35;
-        }
-
-        .airline-badge i {
-            color: var(--primary);
-        }
-
-        .price-big {
-            color: #D97706;
-        }
-
-        .details-grid {
-            background: rgba(0, 0, 0, 0.04);
-            border-color: rgba(0, 0, 0, 0.06);
-        }
-
-        .detail-value {
-            color: #1A1F35;
-        }
-
-        .detail-label {
-            color: rgba(0, 0, 0, 0.4);
-        }
-
-        .detail-value .seat-badge {
-            background: rgba(74, 107, 255, 0.1);
+          }
+          .airline-badge i { color: #4A6BFF; }
+          .price-final { color: #D97706; }
+          .details-grid {
+            background: rgba(0,0,0,0.04);
+            border-color: rgba(0,0,0,0.06);
+          }
+          .detail-value { color: #1A1F35; }
+          .detail-label { color: rgba(0,0,0,0.4); }
+          .detail-value .seat-badge {
+            background: rgba(74, 107, 255, 0.10);
             border-color: rgba(74, 107, 255, 0.15);
-            color: var(--primary);
-        }
-
-        .qr-container {
-            background: rgba(0, 0, 0, 0.03);
-            border-color: rgba(0, 0, 0, 0.06);
-        }
-
-        .qr-container:hover {
-            background: rgba(0, 0, 0, 0.05);
-            border-color: rgba(0, 0, 0, 0.1);
-        }
-
-        .qr-info {
-            color: rgba(0, 0, 0, 0.6);
-        }
-
-        .qr-info strong {
+            color: #4A6BFF;
+          }
+          .qr-container {
+            background: rgba(0,0,0,0.03);
+            border-color: rgba(0,0,0,0.06);
+          }
+          .qr-container:hover {
+            background: rgba(0,0,0,0.06);
+            border-color: rgba(0,0,0,0.12);
+          }
+          .qr-info { color: rgba(0,0,0,0.6); }
+          .qr-info strong { color: #1A1F35; }
+          .qr-info .booking-id { color: #4A6BFF; }
+          .barcode-strip {
+            border-color: rgba(0,0,0,0.08);
+            color: rgba(0,0,0,0.20);
+          }
+          .btn-glass {
+            background: rgba(0,0,0,0.04);
+            border-color: rgba(0,0,0,0.08);
             color: #1A1F35;
-        }
-
-        .qr-info .booking-id {
-            color: var(--primary);
-        }
-
-        .barcode-strip {
-            border-color: rgba(0, 0, 0, 0.08);
-            color: rgba(0, 0, 0, 0.2);
-        }
-
-        .btn-glass {
-            background: rgba(0, 0, 0, 0.05);
-            border-color: rgba(0, 0, 0, 0.08);
+          }
+          .btn-glass:hover {
+            background: rgba(0,0,0,0.08);
+            border-color: rgba(0,0,0,0.15);
+          }
+          .btn-primary-glass { color: white; }
+          .status-chip {
+            background: rgba(0,0,0,0.08);
+            border-color: rgba(0,0,0,0.08);
+          }
+          .ticket-footer { color: rgba(0,0,0,0.25); }
+          .toast {
+            background: rgba(255,255,255,0.96);
             color: #1A1F35;
+            border-color: rgba(0,0,0,0.08);
+          }
+          .price-discount {
+            background: rgba(16, 185, 129, 0.10);
+            border-color: rgba(16, 185, 129, 0.15);
+            color: #059669;
+          }
         }
-
-        .btn-glass:hover {
-            background: rgba(0, 0, 0, 0.08);
-            border-color: rgba(0, 0, 0, 0.15);
+        @media (prefers-reduced-motion: reduce) {
+          * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+          .route-line .route-arrow { animation: none; }
+          .barcode-strip span { animation: none; }
         }
-
-        .btn-primary-glass {
-            background: linear-gradient(135deg, var(--primary-light), var(--primary));
-            color: white;
+        @media print {
+          body { background: white; padding: 0; }
+          .glass-ticket { box-shadow: none; border: 1px solid #ddd; border-radius: 0; backdrop-filter: none; background: white; color: #000; }
+          .ticket-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .status-chip { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .qr-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .btn-glass { display: none; }
+          .ticket-footer { display: none; }
+          .toast { display: none; }
+          .action-buttons { display: none; }
+          body::before, body::after { display: none; }
+          .glass-ticket:hover { transform: none; box-shadow: none; }
+          .qr-container:hover { transform: none; box-shadow: none; }
+          .price-final { color: #D97706; }
+          .city-code { background: none; -webkit-text-fill-color: #000; color: #000; }
+          .route-line .route-arrow { animation: none; }
+          .barcode-strip span { animation: none; }
         }
-
-        .status-chip {
-            background: rgba(0, 0, 0, 0.1);
-            border-color: rgba(0, 0, 0, 0.1);
-        }
-
-        .ticket-footer {
-            color: rgba(0, 0, 0, 0.25);
-        }
-
-        .toast {
-            background: rgba(255, 255, 255, 0.95);
-            color: #1A1F35;
-            border-color: rgba(0, 0, 0, 0.08);
-        }
-    }
-
-    /* ============================================
-               REDUCED MOTION
-               ============================================ */
-    @media (prefers-reduced-motion: reduce) {
-        *,
-        *::before,
-        *::after {
-            animation-duration: 0.01ms !important;
-            animation-iteration-count: 1 !important;
-            transition-duration: 0.01ms !important;
-        }
-
-        .glass-ticket {
-            animation: none;
-            opacity: 1;
-            transform: none;
-        }
-
-        .route-line .route-arrow {
-            animation: none;
-        }
-
-        .status-chip.status-pending {
-            animation: none;
-        }
-
-        .barcode-strip span {
-            animation: none;
-        }
-    }
-
-    /* ============================================
-               PRINT STYLES
-               ============================================ */
-    @media print {
-        body {
-            background: white;
-            padding: 0;
-        }
-
-        .glass-ticket {
-            box-shadow: none;
-            border: 1px solid #ddd;
-            border-radius: 0;
-            backdrop-filter: none;
-            background: white;
-            color: #000;
-        }
-
-        .ticket-header {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-
-        .status-chip {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-
-        .qr-box {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-
-        .btn-glass {
-            display: none;
-        }
-
-        .ticket-footer {
-            display: none;
-        }
-
-        .toast {
-            display: none;
-        }
-
-        .action-buttons {
-            display: none;
-        }
-
-        body::before,
-        body::after {
-            display: none;
-        }
-
-        .glass-ticket:hover {
-            transform: none;
-            box-shadow: none;
-        }
-
-        .qr-container:hover {
-            transform: none;
-            box-shadow: none;
-        }
-
-        .price-big {
-            color: #D97706;
-        }
-
-        .detail-value {
-            color: #000;
-        }
-
-        .city-code {
-            background: none;
-            -webkit-text-fill-color: #000;
-            color: #000;
-        }
-
-        .route-line .route-arrow {
-            animation: none;
-        }
-    }
-  </style>
+    </style>
 </head>
 <body>
-<!-- Ticket Wrapper -->
+
 <div class="ticket-wrapper">
-  <div class="glass-ticket">
-    <!-- Header -->
-    <div class="ticket-header">
-      <h1><i class="fas fa-plane-departure"></i> SkyFlight</h1>
-      <div class="subtitle">Electronic Boarding Pass</div>
-      <div class="status-chip status-confirmed" id="statusBadge">
-        <i class="fas fa-check-circle"></i>
-        <span id="statusText">CONFIRMED</span>
-      </div>
+    <div class="glass-ticket">
+
+        <div class="ticket-header">
+            <h1><i class="fas fa-plane-departure"></i> SkyFlight</h1>
+            <div class="subtitle">Electronic Boarding Pass</div>
+            <div class="status-chip" id="statusBadge">
+                <i class="fas fa-check-circle"></i>
+                <span id="statusText">PAID</span>
+            </div>
+        </div>
+
+        <div class="ticket-body">
+
+            <div class="airline-row">
+        <span class="airline-badge">
+          <i class="fas fa-building"></i> <span id="airlineName">Aeroflot</span>
+        </span>
+                <div class="price-block">
+                    <span class="price-final" id="priceFinal">$170.61</span>
+                    <span class="price-original" id="priceOriginal">$189.56</span>
+                    <span class="price-discount" id="priceDiscount">-10% WELCOME10</span>
+                </div>
+            </div>
+
+            <div class="flight-route">
+                <div class="city-box">
+                    <div class="city-code" id="depCode">SVO</div>
+                    <div class="city-full" id="depCity">Moscow</div>
+                </div>
+                <div class="route-line">
+                    <i class="fas fa-long-arrow-alt-right route-arrow"></i>
+                    <span class="flight-time-small" id="flightDuration">2h 45m</span>
+                </div>
+                <div class="city-box">
+                    <div class="city-code" id="arrCode">AER</div>
+                    <div class="city-full" id="arrCity">Sochi</div>
+                </div>
+            </div>
+
+            <div class="details-grid" id="detailsGrid">
+                <div class="detail">
+                    <span class="detail-label">Booking</span>
+                    <span class="detail-value" id="bookingId">#180</span>
+                </div>
+                <div class="detail">
+                    <span class="detail-label">Flight</span>
+                    <span class="detail-value" id="flightNumber">SF 406</span>
+                </div>
+                <div class="detail">
+                    <span class="detail-label">Date</span>
+                    <span class="detail-value" id="flightDate">July 20, 2025</span>
+                </div>
+                <div class="detail">
+                    <span class="detail-label">Class</span>
+                    <span class="detail-value" id="flightClass">Economy</span>
+                </div>
+                <div class="detail">
+                    <span class="detail-label">Departure</span>
+                    <span class="detail-value" id="depTime">08:00</span>
+                </div>
+                <div class="detail">
+                    <span class="detail-label">Seat(s)</span>
+                    <span class="detail-value"><span class="seat-badge" id="seatNumber">F6</span></span>
+                </div>
+            </div>
+
+            <div class="qr-container" id="qrContainer">
+                <div class="qr-box" id="qrcodeIcon">
+                    <i class="fas fa-qrcode"></i>
+                </div>
+                <div class="qr-info">
+                    <i class="fas fa-mobile-alt"></i> Scan at the gate
+                    <span class="booking-id" id="bookingIdFull">#SKF-180</span>
+                </div>
+            </div>
+
+            <div class="barcode-strip">
+                <span>||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||</span>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn-glass" id="shareBtn">
+                    <i class="fas fa-share-alt"></i> Share
+                </button>
+                <button class="btn-glass btn-primary-glass" id="downloadBtn">
+                    <i class="fas fa-download"></i> Save to Wallet
+                </button>
+            </div>
+        </div>
     </div>
 
-    <!-- Body -->
-    <div class="ticket-body">
-      <!-- Airline & Price -->
-      <div class="airline-row">
-                    <span class="airline-badge">
-                        <i class="fas fa-building"></i>
-                        SkyBound Airlines
-                    </span>
-        <span class="price-big" id="ticketPrice">
-                        <span class="price-currency">$</span>249
-                    </span>
-      </div>
-
-      <!-- Flight Route -->
-      <div class="flight-route">
-        <div class="city-box">
-          <div class="city-code" id="depCode">JFK</div>
-          <div class="city-full" id="depCity">New York</div>
-        </div>
-        <div class="route-line">
-          <i class="fas fa-long-arrow-alt-right route-arrow"></i>
-          <span class="flight-time-small" id="flightDuration">2h 45m</span>
-        </div>
-        <div class="city-box">
-          <div class="city-code" id="arrCode">LAX</div>
-          <div class="city-full" id="arrCity">Los Angeles</div>
-        </div>
-      </div>
-
-      <!-- Details Grid -->
-      <div class="details-grid" id="detailsGrid">
-        <div class="detail">
-          <span class="detail-label">Flight</span>
-          <span class="detail-value" id="flightNumber">SF 406</span>
-        </div>
-        <div class="detail">
-          <span class="detail-label">Date</span>
-          <span class="detail-value" id="flightDate">June 20, 2026</span>
-        </div>
-        <div class="detail">
-          <span class="detail-label">Departure</span>
-          <span class="detail-value" id="depTime">08:30 AM</span>
-        </div>
-        <div class="detail">
-          <span class="detail-label">Arrival</span>
-          <span class="detail-value" id="arrTime">11:15 AM</span>
-        </div>
-        <div class="detail">
-          <span class="detail-label">Class</span>
-          <span class="detail-value" id="flightClass">Business</span>
-        </div>
-        <div class="detail">
-          <span class="detail-label">Seat(s)</span>
-          <span class="detail-value">
-                            <span class="seat-badge" id="seatNumber">12A, 12B</span>
-                        </span>
-        </div>
-      </div>
-
-      <!-- QR Code -->
-      <div class="qr-container" id="qrContainer">
-        <div class="qr-box" id="qrcodeIcon">
-          <i class="fas fa-qrcode"></i>
-        </div>
-        <div class="qr-info">
-          <i class="fas fa-mobile-alt"></i> Scan at the gate
-          <span class="booking-id" id="bookingId">#SKF-9241</span>
-        </div>
-      </div>
-
-      <!-- Barcode -->
-      <div class="barcode-strip">
-        <span>||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||</span>
-      </div>
-
-      <!-- Actions -->
-      <div class="action-buttons">
-        <button class="btn-glass" id="shareTicketBtn">
-          <i class="fas fa-share-alt"></i> Share
-        </button>
-        <button class="btn-glass btn-primary-glass" id="downloadBtn">
-          <i class="fas fa-download"></i> Save to Wallet
-        </button>
-      </div>
+    <div class="ticket-footer">
+        <i class="fas fa-shield-alt"></i> Protected by digital encryption
     </div>
-  </div>
-
-  <!-- Footer -->
-  <div class="ticket-footer">
-    <i class="fas fa-shield-alt"></i>
-    Protected by digital encryption
-  </div>
 </div>
 
-<!-- Toast -->
 <div class="toast" id="toast"></div>
 
 <script>
-  // ============================================
-  // STATUS MANAGEMENT
-  // ============================================
-  (function() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const statusParam = urlParams.get('status');
-      const badge = document.getElementById('statusBadge');
-      const statusSpan = document.getElementById('statusText');
-      const priceEl = document.getElementById('ticketPrice');
-      const seatEl = document.getElementById('seatNumber');
+    (function() {
+      'use strict';
 
-      const statusConfig = {
-          'confirmed': {
-              class: 'status-confirmed',
-              text: 'CONFIRMED',
-              icon: 'fa-check-circle',
-              price: '$249'
-          },
-          'paid': {
-              class: 'status-paid',
-              text: 'PAID',
-              icon: 'fa-check-circle',
-              price: '$249'
-          },
-          'pending': {
-              class: 'status-pending',
-              text: 'PENDING PAYMENT',
-              icon: 'fa-clock',
-              price: '$249'
-          },
-          'cancelled': {
-              class: 'status-cancelled',
-              text: 'CANCELLED',
-              icon: 'fa-times-circle',
-              price: '<del>$249</del> <span style="color:#EF4444;">Refunded</span>'
+      function getParam(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+      }
+
+      function parsePrice(val) {
+        const num = parseFloat(val);
+        return !isNaN(num) && num > 0 ? num : null;
+      }
+
+      /**
+       * ПРАВИЛЬНЫЙ РАСЧЕТ ЦЕНЫ
+       * Как в приложении:
+       * 1. Берем базовую цену
+       * 2. Применяем скидку промокода (процент от базовой цены)
+       * 3. Округляем до 2 знаков (банковское округление)
+       */
+      function calculatePrice(basePrice, discountPercent) {
+        // Скидка в процентах
+        const percent = discountPercent || 0;
+
+        // Сумма скидки
+        const discountAmount = basePrice * (percent / 100);
+
+        // Цена после скидки
+        let finalPrice = basePrice - discountAmount;
+
+        // Округление до 2 знаков (как в приложении)
+        // Используем Math.round для правильного банковского округления
+        finalPrice = Math.round(finalPrice * 100) / 100;
+
+        // Сумма скидки тоже округляем
+        const roundedDiscount = Math.round(discountAmount * 100) / 100;
+
+        return {
+          basePrice: basePrice,
+          discountPercent: percent,
+          discountAmount: roundedDiscount,
+          finalPrice: finalPrice
+        };
+      }
+
+      function updateUI(priceData) {
+        const priceFinal = document.getElementById('priceFinal');
+        const priceOriginal = document.getElementById('priceOriginal');
+        const priceDiscount = document.getElementById('priceDiscount');
+
+        if (priceFinal) {
+          priceFinal.textContent = '$' + priceData.finalPrice.toFixed(2);
+        }
+
+        if (priceOriginal) {
+          priceOriginal.textContent = '$' + priceData.basePrice.toFixed(2);
+          priceOriginal.style.display = priceData.discountPercent > 0 ? 'inline' : 'none';
+        }
+
+        if (priceDiscount) {
+          if (priceData.discountPercent > 0) {
+            const promocode = getParam('promocode') || getParam('promoCode') || 'DISCOUNT';
+            priceDiscount.textContent = '-' + priceData.discountPercent + '% ' + promocode;
+            priceDiscount.style.display = 'inline-block';
+          } else {
+            priceDiscount.style.display = 'none';
           }
-      };
+        }
+
+        // Добавляем информацию о скидке в консоль для отладки
+        console.log('📊 Расчет цены:');
+        console.log('  Базовая цена: $' + priceData.basePrice.toFixed(2));
+        console.log('  Скидка: ' + priceData.discountPercent + '%');
+        console.log('  Сумма скидки: $' + priceData.discountAmount.toFixed(2));
+        console.log('  Итоговая цена: $' + priceData.finalPrice.toFixed(2));
+      }
 
       function updateStatus(status) {
-          const config = statusConfig[status] || statusConfig['confirmed'];
-
-          // Update badge
-          badge.className = 'status-chip ' + config.class;
-          badge.innerHTML = `<i class="fas ${config.icon}"></i> <span id="statusText">${config.text}</span>`;
-
-          // Update price
-          if (priceEl) {
-              if (status === 'cancelled') {
-                  priceEl.innerHTML = config.price;
-              } else {
-                  priceEl.innerHTML = `<span class="price-currency">$</span>${config.price.replace('$', '')}`;
-              }
-          }
-
-          // Update seat display for mobile
-          if (seatEl && window.innerWidth < 450) {
-              const seats = seatEl.textContent.split(',');
-              if (seats.length > 1) {
-                  seatEl.textContent = seats[0].trim();
-              }
-          }
+        const badge = document.getElementById('statusBadge');
+        const statusSpan = document.getElementById('statusText');
+        const configs = {
+          'paid': { class: 'status-paid', text: 'PAID', icon: 'fa-check-circle' },
+          'confirmed': { class: 'status-confirmed', text: 'CONFIRMED', icon: 'fa-check-circle' },
+          'pending': { class: 'status-pending', text: 'PENDING PAYMENT', icon: 'fa-clock' },
+          'cancelled': { class: 'status-cancelled', text: 'CANCELLED', icon: 'fa-times-circle' }
+        };
+        const config = configs[status] || configs['paid'];
+        badge.className = 'status-chip ' + config.class;
+        badge.innerHTML = '<i class="fas ' + config.icon + '"></i> <span id="statusText">' + config.text + '</span>';
       }
 
-      if (statusParam && statusConfig[statusParam]) {
-          updateStatus(statusParam);
-      } else {
-          updateStatus('confirmed');
-      }
-
-      // Listen for window resize to adjust seat display
-      let resizeTimeout;
-      window.addEventListener('resize', function() {
-          clearTimeout(resizeTimeout);
-          resizeTimeout = setTimeout(function() {
-              if (seatEl && window.innerWidth < 450) {
-                  const seats = seatEl.textContent.split(',');
-                  if (seats.length > 1) {
-                      const firstSeat = seats[0].trim();
-                      if (!seatEl.dataset.full) {
-                          seatEl.dataset.full = seatEl.textContent;
-                          seatEl.textContent = firstSeat;
-                      }
-                  }
-              } else if (seatEl && seatEl.dataset.full) {
-                  seatEl.textContent = seatEl.dataset.full;
-                  delete seatEl.dataset.full;
-              }
-          }, 250);
-      });
-  })();
-
-  // ============================================
-  // TOAST SYSTEM
-  // ============================================
-  const toast = document.getElementById('toast');
-
-  function showToast(message, duration = 2200) {
-      if (!toast) return;
-
-      toast.textContent = message;
-      toast.classList.add('show');
-
-      clearTimeout(toast._timeout);
-      toast._timeout = setTimeout(() => {
+      function showToast(message, duration) {
+        duration = duration || 2200;
+        const toast = document.getElementById('toast');
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toast._timeout);
+        toast._timeout = setTimeout(function() {
           toast.classList.remove('show');
-      }, duration);
-  }
+        }, duration);
+      }
 
-  // ============================================
-  // BUTTON HANDLERS
-  // ============================================
-  const shareBtn = document.getElementById('shareTicketBtn');
-  const downloadBtn = document.getElementById('downloadBtn');
-  const qrContainer = document.getElementById('qrContainer');
+      document.addEventListener('DOMContentLoaded', function() {
+        // Получаем параметры из URL
+        const basePrice = parsePrice(getParam('price')) || 189.56;
+        const discountPercent = parsePrice(getParam('discountPercent')) || parsePrice(getParam('promoDiscount')) || 0;
+        const statusParam = getParam('status') || 'paid';
 
-  if (shareBtn) {
-      shareBtn.addEventListener('click', function(e) {
-          e.preventDefault();
-          showToast('✈️ Share link copied! Your boarding pass is ready');
+        // ПРАВИЛЬНЫЙ РАСЧЕТ
+        const priceData = calculatePrice(basePrice, discountPercent);
+        updateUI(priceData);
+        updateStatus(statusParam);
 
-          // Simulate share using Web Share API if available
+        // Заполняем данные из URL
+        const bookingId = getParam('bookingId') || '180';
+        const depCity = getParam('depCity') || 'Moscow';
+        const depCode = getParam('depCode') || 'SVO';
+        const arrCity = getParam('arrCity') || 'Sochi';
+        const arrCode = getParam('arrCode') || 'AER';
+        const flightDate = getParam('flightDate') || 'July 20, 2025';
+        const flightTime = getParam('flightTime') || '08:00';
+        const seatNumber = getParam('seat') || 'F6';
+        const airline = getParam('airline') || 'Aeroflot';
+        const flightNum = getParam('flightNum') || 'SF 406';
+        const flightClass = getParam('class') || 'Economy';
+
+        document.getElementById('bookingId').textContent = '#' + bookingId;
+        document.getElementById('bookingIdFull').textContent = '#SKF-' + bookingId;
+        document.getElementById('depCity').textContent = depCity;
+        document.getElementById('depCode').textContent = depCode;
+        document.getElementById('arrCity').textContent = arrCity;
+        document.getElementById('arrCode').textContent = arrCode;
+        document.getElementById('flightDate').textContent = flightDate;
+        document.getElementById('depTime').textContent = flightTime;
+        document.getElementById('seatNumber').textContent = seatNumber;
+        document.getElementById('airlineName').textContent = airline;
+        document.getElementById('flightNumber').textContent = flightNum;
+        document.getElementById('flightClass').textContent = flightClass;
+
+        // Кнопка Share
+        document.getElementById('shareBtn')?.addEventListener('click', function() {
           if (navigator.share) {
-              navigator.share({
-                  title: 'SkyFlight Boarding Pass',
-                  text: 'Check out my boarding pass for SkyFlight!',
-                  url: window.location.href
-              }).catch(() => {});
+            navigator.share({
+              title: 'SkyFlight Boarding Pass',
+              text: 'Flight ' + depCode + ' → ' + arrCode + ' | Seat ' + seatNumber,
+              url: window.location.href
+            }).catch(function() {});
+          } else {
+            showToast('✈️ Share: ' + depCode + ' → ' + arrCode + ', Seat ' + seatNumber);
           }
-      });
-  }
+        });
 
-  if (downloadBtn) {
-      downloadBtn.addEventListener('click', function(e) {
-          e.preventDefault();
+        // Кнопка Download
+        document.getElementById('downloadBtn')?.addEventListener('click', function() {
           showToast('📱 Boarding pass saved to wallet (demo)');
+        });
 
-          // Simulate download
-          const link = document.createElement('a');
-          link.download = 'boarding-pass-skyflight.png';
-          link.href = '#';
-          link.click();
-      });
-  }
-
-  if (qrContainer) {
-      qrContainer.addEventListener('click', function() {
-          showToast('🔍 Boarding QR code — ready for scanning');
-          this.style.transform = 'scale(0.98)';
-          setTimeout(() => {
-              this.style.transform = '';
+        // QR код
+        document.getElementById('qrContainer')?.addEventListener('click', function() {
+          showToast('🔍 QR Code: SKF-' + bookingId);
+          this.style.transform = 'scale(0.96)';
+          setTimeout(function() {
+            document.getElementById('qrContainer').style.transform = '';
           }, 200);
-      });
-  }
+        });
 
-  // ============================================
-  // KEYBOARD SHORTCUTS
-  // ============================================
-  document.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' || e.key === ' ') {
-          const activeElement = document.activeElement;
-          if (activeElement && (
-                  activeElement.id === 'shareTicketBtn' ||
-                  activeElement.id === 'downloadBtn' ||
-                  activeElement.id === 'qrContainer'
-              )) {
-              e.preventDefault();
-              activeElement.click();
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 's' || e.key === 'S') document.getElementById('shareBtn')?.click();
+          if (e.key === 'd' || e.key === 'D') document.getElementById('downloadBtn')?.click();
+          if (e.key === 'q' || e.key === 'Q') document.getElementById('qrContainer')?.click();
+          if (e.key === 'Escape') {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('show');
           }
-      }
+        });
 
-      if (e.key === 'Escape') {
-          toast.classList.remove('show');
-      }
+        // Log
+        console.log('%c✈️ SkyFlight Boarding Pass', 'font-size:20px;font-weight:bold;color:#4A6BFF;');
+        console.log('%cBooking #' + bookingId + ' | Status: ' + statusParam.toUpperCase() + ' | Price: $' + priceData.finalPrice.toFixed(2), 'font-size:14px;color:#9CA3AF;');
+        console.log('%cUse URL params: ?price=189.56&discountPercent=10&promocode=WELCOME10', 'font-size:12px;color:#6B7280;');
+      });
 
-      if (e.key === 's' || e.key === 'S') {
-          if (shareBtn) shareBtn.click();
-      }
-
-      if (e.key === 'd' || e.key === 'D') {
-          if (downloadBtn) downloadBtn.click();
-      }
-
-      if (e.key === 'q' || e.key === 'Q') {
-          if (qrContainer) qrContainer.click();
-      }
-  });
-
-  // ============================================
-  // CONSOLE INFO
-  // ============================================
-  console.log('%c✈️ SkyFlight Boarding Pass', 'font-size: 20px; font-weight: bold; color: #4A6BFF;');
-  console.log('%cTicket #SKF-9241 | Status: CONFIRMED', 'font-size: 14px; color: #9CA3AF;');
-  console.log('%cUse ?status=confirmed | paid | pending | cancelled to change status', 'font-size: 12px; color: #6B7280;');
-  console.log('%cKeyboard shortcuts: S - Share, D - Download, Q - QR Code, ESC - Close toast', 'font-size: 12px; color: #6B7280;');
-
-  // ============================================
-  // SMOOTH APPEARANCE
-  // ============================================
-  document.addEventListener('DOMContentLoaded', function() {
-      const ticket = document.querySelector('.glass-ticket');
-      if (ticket) {
-          ticket.style.opacity = '0';
-          ticket.style.transform = 'scale(0.95) translateY(20px)';
-          requestAnimationFrame(() => {
-              ticket.style.transition = 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)';
-              ticket.style.opacity = '1';
-              ticket.style.transform = 'scale(1) translateY(0)';
-          });
-      }
-  });
-
-  // ============================================
-  // NETWORK STATUS INDICATOR
-  // ============================================
-  window.addEventListener('online', function() {
-      showToast('🌐 Connection restored', 1500);
-  });
-
-  window.addEventListener('offline', function() {
-      showToast('⚠️ You are offline. Some features may be unavailable.', 2500);
-  });
+    })();
 </script>
 </body>
 </html>

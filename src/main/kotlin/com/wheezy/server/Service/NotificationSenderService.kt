@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Service
 class NotificationSenderService(
@@ -22,16 +23,12 @@ class NotificationSenderService(
     private val flightRepository: FlightRepository,
     private val fcmService: FCMService,
     private val webSocketController: WebSocketNotificationController,
-    private val gmailEmailService: GmailEmailService,
-    private val emailTemplate: EmailTemplateService,
     private val settingsRepository: UserNotificationSettingsRepository
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Volatile
-    private var isSending = false
+    private val isSending = AtomicBoolean(false)
 
-    private val sentEmailCache = mutableMapOf<String, Long>()
     private val lastSentCache = mutableMapOf<String, Long>()
     private val sentNotificationsCache = mutableMapOf<String, Long>()
 
@@ -82,108 +79,65 @@ class NotificationSenderService(
         data: Map<String, String>,
         webSocketAction: (String) -> Unit
     ) {
+        log.info("sendAllChannels START: userId=$userId, type=$notificationType, title=$title")
+
         if (!shouldSendNotification(userId, notificationType)) {
+            log.warn("sendAllChannels BLOCKED by settings: userId=$userId, type=$notificationType")
             return
         }
 
         if (isDuplicate(notificationType, userId, message)) {
-            log.debug("Duplicate notification suppressed: $notificationType for user $userId")
+            log.warn("sendAllChannels BLOCKED by duplicate: userId=$userId, type=$notificationType")
             return
         }
         markSent(notificationType, userId, message)
 
-        if (isSending) {
+        if (!isSending.compareAndSet(false, true)) {
+            log.warn("sendAllChannels BLOCKED: another send in progress, userId=$userId")
             return
         }
 
-        isSending = true
+        log.info("sendAllChannels ACQUIRED lock: userId=$userId")
 
         try {
             val userOpt = userRepository.findById(userId)
             if (userOpt.isPresent) {
                 val user = userOpt.get()
+                log.info("sendAllChannels user found: id=${user.id}, email=${user.email}")
 
                 try {
+                    log.info("sendAllChannels sending WebSocket to ${user.email}")
                     webSocketAction(user.email)
+                    log.info("sendAllChannels WebSocket sent")
                 } catch (e: Exception) {
-                    log.error("WebSocket failed for user ${user.id}", e)
+                    log.error("sendAllChannels WebSocket failed for user ${user.id}", e)
                 }
 
                 try {
-                    fcmService.sendNotificationToUser(
+                    log.info("sendAllChannels calling FCM service for userId=$userId")
+                    val fcmResult = fcmService.sendNotificationToUser(
                         userId = userId,
                         title = title,
                         body = message,
                         data = data
                     )
+                    log.info("sendAllChannels FCM result: $fcmResult")
                 } catch (e: Exception) {
-                    log.error("FCM failed for user ${user.id}", e)
+                    log.error("sendAllChannels FCM failed for user ${user.id}", e)
                 }
+            } else {
+                log.warn("sendAllChannels user NOT FOUND: userId=$userId")
             }
         } finally {
-            isSending = false
-        }
-    }
-
-    private fun sendEmailIfNeeded(
-        userId: Long,
-        buildHtml: (User) -> String,
-        subject: String,
-        cacheKey: String? = null
-    ) {
-        val userOpt = userRepository.findById(userId)
-        if (!userOpt.isPresent) {
-            log.warn("User not found for email: userId=$userId")
-            return
+            isSending.set(false)
+            log.info("sendAllChannels RELEASED lock: userId=$userId")
         }
 
-        val user = userOpt.get()
-
-        if (user.email.isBlank()) {
-            log.error("User email is blank for userId=$userId, cannot send email")
-            return
-        }
-
-        try {
-            val settingsOpt = settingsRepository.findByUserId(userId)
-            if (settingsOpt.isPresent && !settingsOpt.get().emailEnabled) {
-                return
-            }
-        } catch (e: Exception) {
-            log.error("Error checking email settings", e)
-        }
-
-        val key = cacheKey ?: "${subject}_${userId}"
-        val lastSent = sentEmailCache[key]
-
-        if (lastSent != null && System.currentTimeMillis() - lastSent < 300000) {
-            return
-        }
-
-        try {
-            val htmlContent = buildHtml(user)
-            val success = gmailEmailService.sendEmail(user.email, subject, htmlContent)
-            if (success) {
-                sentEmailCache[key] = System.currentTimeMillis()
-            } else {
-                log.error("Failed to send email to user ${user.id}: $subject")
-            }
-
-            if (sentEmailCache.size > 100) {
-                val iterator = sentEmailCache.entries.iterator()
-                while (iterator.hasNext()) {
-                    val entry = iterator.next()
-                    if (System.currentTimeMillis() - entry.value > 3600000) {
-                        iterator.remove()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            log.error("Failed to send email to user ${user.id}", e)
-        }
+        log.info("sendAllChannels FINISHED: userId=$userId, type=$notificationType")
     }
 
     fun sendPointsAwarded(userId: Long, points: Int, reason: String) {
+        log.info("sendPointsAwarded: userId=$userId, points=$points, reason=$reason")
         sendAllChannels(
             userId = userId,
             title = "Points Awarded!",
@@ -198,6 +152,7 @@ class NotificationSenderService(
     }
 
     fun sendPointsDeducted(userId: Long, points: Int, reason: String) {
+        log.info("sendPointsDeducted: userId=$userId, points=$points, reason=$reason")
         sendAllChannels(
             userId = userId,
             title = "Points Deducted",
@@ -212,6 +167,7 @@ class NotificationSenderService(
     }
 
     fun sendPointsReturned(userId: Long, points: Int, reason: String) {
+        log.info("sendPointsReturned: userId=$userId, points=$points, reason=$reason")
         sendAllChannels(
             userId = userId,
             title = "Points Returned",
@@ -226,6 +182,7 @@ class NotificationSenderService(
     }
 
     fun sendTierChangeNotification(userId: Long, oldTier: String, newTier: String) {
+        log.info("sendTierChangeNotification: userId=$userId, oldTier=$oldTier, newTier=$newTier")
         val message = when {
             getTierLevel(newTier) > getTierLevel(oldTier) ->
                 "Congratulations! You've been upgraded to $newTier tier!"
@@ -247,6 +204,7 @@ class NotificationSenderService(
     }
 
     fun sendPointsExpiredNotification(userId: Long, points: Int) {
+        log.info("sendPointsExpiredNotification: userId=$userId, points=$points")
         sendAllChannels(
             userId = userId,
             title = "Points Expiration",
@@ -260,6 +218,7 @@ class NotificationSenderService(
     }
 
     fun sendNotification(userId: Long, notification: Notification) {
+        log.info("sendNotification: userId=$userId, notificationId=${notification.id}")
         sendAllChannels(
             userId,
             "SkyFlight Notification",
@@ -275,6 +234,7 @@ class NotificationSenderService(
     }
 
     fun sendBookingCreated(userId: Long, bookingId: Long) {
+        log.info("sendBookingCreated: userId=$userId, bookingId=$bookingId")
         sendAllChannels(
             userId,
             "Booking Created",
@@ -290,26 +250,13 @@ class NotificationSenderService(
     }
 
     fun sendBookingConfirmed(userId: Long, bookingId: Long, amount: Long) {
+        log.info("sendBookingConfirmed: userId=$userId, bookingId=$bookingId, amount=$amount")
         val booking = getBooking(bookingId)
         val flight = booking?.let { getFlight(it.flightId) }
 
         if (booking == null || flight == null) {
-            log.error("Cannot send booking confirmed: booking or flight not found for bookingId $bookingId")
+            log.error("sendBookingConfirmed: booking or flight not found for bookingId $bookingId")
             return
-        }
-
-        try {
-            val settingsOpt = settingsRepository.findByUserId(userId)
-            if (settingsOpt.isEmpty || settingsOpt.get().bookingConfirmed) {
-                sendEmailIfNeeded(
-                    userId = userId,
-                    buildHtml = { user -> emailTemplate.bookingConfirmation(user, booking, flight, amount) },
-                    subject = "Booking Confirmed - SkyFlight #$bookingId",
-                    cacheKey = "booking_confirmed_${bookingId}"
-                )
-            }
-        } catch (e: Exception) {
-            log.error("Error checking email settings", e)
         }
 
         sendAllChannels(
@@ -328,23 +275,10 @@ class NotificationSenderService(
     }
 
     fun sendPaymentSuccess(userId: Long, bookingId: Long, amount: Long) {
+        log.info("sendPaymentSuccess: userId=$userId, bookingId=$bookingId, amount=$amount")
         val amountStr = String.format("%.2f", amount / 100.0)
         val booking = getBooking(bookingId)
         val flight = booking?.let { getFlight(it.flightId) }
-
-        try {
-            val settingsOpt = settingsRepository.findByUserId(userId)
-            if (settingsOpt.isEmpty || settingsOpt.get().paymentSuccess) {
-                sendEmailIfNeeded(
-                    userId = userId,
-                    buildHtml = { user -> emailTemplate.paymentSuccess(user, bookingId, amount) },
-                    subject = "Payment Successful - SkyFlight #$bookingId",
-                    cacheKey = "payment_success_${bookingId}"
-                )
-            }
-        } catch (e: Exception) {
-            log.error("Error checking email settings", e)
-        }
 
         sendAllChannels(
             userId,
@@ -362,6 +296,7 @@ class NotificationSenderService(
     }
 
     fun sendPaymentFailed(userId: Long, bookingId: Long, errorMessage: String? = null) {
+        log.info("sendPaymentFailed: userId=$userId, bookingId=$bookingId, error=$errorMessage")
         sendAllChannels(
             userId,
             "Payment Failed",
@@ -378,43 +313,43 @@ class NotificationSenderService(
     }
 
     fun sendBookingCancelled(userId: Long, bookingId: Long) {
+        log.info("sendBookingCancelled CALLED: userId=$userId, bookingId=$bookingId")
+
         val booking = getBooking(bookingId)
+        if (booking == null) {
+            log.error("sendBookingCancelled: booking not found for bookingId $bookingId")
+            return
+        }
 
-        val shouldSendEmail = booking?.let {
-            ChronoUnit.MINUTES.between(it.bookingDate, LocalDateTime.now()) > 5
-        } ?: true
+        log.info("sendBookingCancelled: booking found, status=${booking.status}")
 
-        if (shouldSendEmail) {
-            try {
-                val settingsOpt = settingsRepository.findByUserId(userId)
-                if (settingsOpt.isEmpty || settingsOpt.get().bookingCancelled) {
-                    sendEmailIfNeeded(
-                        userId = userId,
-                        buildHtml = { user -> emailTemplate.bookingCancellation(user, bookingId) },
-                        subject = "Booking Cancelled - SkyFlight #$bookingId",
-                        cacheKey = "booking_cancelled_${bookingId}"
-                    )
-                }
-            } catch (e: Exception) {
-                log.error("Error checking email settings", e)
-            }
+        val flight = getFlight(booking.flightId)
+        val route = if (flight != null) {
+            "${flight.departureCity} → ${flight.arrivalCity}"
+        } else {
+            "#$bookingId"
         }
 
         sendAllChannels(
             userId,
             "Booking Cancelled",
-            "Your booking #$bookingId has been cancelled",
+            "Your flight $route has been cancelled",
             "booking_cancelled",
             data = mapOf(
                 "type" to "booking_cancelled",
-                "bookingId" to bookingId.toString()
+                "bookingId" to bookingId.toString(),
+                "flightId" to booking.flightId.toString()
             )
         ) { email ->
-            webSocketController.sendBookingUpdate(email, bookingId, "CANCELLED", null)
+            log.info("sendBookingCancelled: sending WebSocket update to $email")
+            webSocketController.sendBookingUpdate(email, bookingId, "CANCELLED", booking.seatNumbers)
         }
+
+        log.info("sendBookingCancelled FINISHED: userId=$userId, bookingId=$bookingId")
     }
 
     fun sendBookingUpdate(userId: Long, bookingId: Long, status: String) {
+        log.info("sendBookingUpdate: userId=$userId, bookingId=$bookingId, status=$status")
         sendAllChannels(
             userId,
             "Booking Update",
@@ -431,6 +366,7 @@ class NotificationSenderService(
     }
 
     fun sendReminder(userId: Long, bookingId: Long, flight: Flight) {
+        log.info("sendReminder: userId=$userId, bookingId=$bookingId")
         if (!canSend("reminder", userId, REMINDER_COOLDOWN_SECONDS)) {
             log.debug("Reminder suppressed (cooldown): user $userId")
             return
@@ -439,15 +375,9 @@ class NotificationSenderService(
 
         val settingsOpt = settingsRepository.findByUserId(userId)
         if (settingsOpt.isPresent && !settingsOpt.get().flightReminder) {
+            log.debug("Reminder suppressed (settings): user $userId")
             return
         }
-
-        sendEmailIfNeeded(
-            userId = userId,
-            buildHtml = { user -> emailTemplate.reminder(user, bookingId, flight) },
-            subject = "Reminder: Your flight is tomorrow!",
-            cacheKey = "reminder_${bookingId}"
-        )
 
         sendAllChannels(
             userId,
@@ -463,22 +393,7 @@ class NotificationSenderService(
     }
 
     fun sendWelcomeEmail(userId: Long) {
-        try {
-            val settingsOpt = settingsRepository.findByUserId(userId)
-            if (settingsOpt.isPresent && !settingsOpt.get().emailEnabled) {
-                return
-            }
-        } catch (e: Exception) {
-            log.error("Error checking email settings", e)
-        }
-
-        sendEmailIfNeeded(
-            userId = userId,
-            buildHtml = { user -> emailTemplate.welcomeEmail(user) },
-            subject = "Welcome to SkyFlight!",
-            cacheKey = "welcome_${userId}"
-        )
-
+        log.info("sendWelcomeEmail: userId=$userId")
         sendAllChannels(
             userId,
             "Welcome to SkyFlight! 🎉",
@@ -491,6 +406,7 @@ class NotificationSenderService(
     }
 
     fun sendReviewReminder(userId: Long, bookingId: Long, flight: Flight) {
+        log.info("sendReviewReminder: userId=$userId, bookingId=$bookingId")
         if (!canSend("review_reminder", userId, 86400)) {
             log.debug("Review reminder suppressed (cooldown): user $userId")
             return
@@ -511,8 +427,10 @@ class NotificationSenderService(
     }
 
     fun sendThankYouAfterFlight(userId: Long, bookingId: Long, flight: Flight) {
+        log.info("sendThankYouAfterFlight: userId=$userId, bookingId=$bookingId")
         val settingsOpt = settingsRepository.findByUserId(userId)
         if (settingsOpt.isPresent && !settingsOpt.get().thankYouAfterFlight) {
+            log.debug("Thank you suppressed (settings): user $userId")
             return
         }
 
@@ -521,13 +439,6 @@ class NotificationSenderService(
             return
         }
         lastSentCache["thank_you_${userId}"] = System.currentTimeMillis()
-
-        sendEmailIfNeeded(
-            userId = userId,
-            buildHtml = { user -> emailTemplate.thankYouAfterFlight(user, bookingId, flight) },
-            subject = "Thank you for flying with SkyFlight!",
-            cacheKey = "thank_you_${bookingId}"
-        )
 
         sendAllChannels(
             userId,
@@ -543,6 +454,7 @@ class NotificationSenderService(
     }
 
     fun sendPromotion(userId: Long, title: String, message: String, promoId: Long? = null, promoCode: String? = null) {
+        log.info("sendPromotion: userId=$userId, title=$title")
         val data = mutableMapOf(
             "type" to "mass_promotion"
         )
@@ -559,6 +471,7 @@ class NotificationSenderService(
     }
 
     fun sendReferralCode(userId: Long, referralCode: String) {
+        log.info("sendReferralCode: userId=$userId, code=$referralCode")
         sendAllChannels(
             userId = userId,
             title = "Your Referral Code is Ready!",

@@ -111,15 +111,40 @@ class AuthController(
 
     @GetMapping("/oauth2/success")
     fun oauth2Success(@RequestParam token: String): ResponseEntity<AuthResponse> {
-        val user = userService.findByEmail(jwtUtil.extractUsername(token))
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        val username = jwtUtil.extractUsername(token)
+        if (username == null) {
+            logger.warn("Invalid token")
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        val user = userService.findByEmail(username)
+        if (user == null) {
+            logger.warn("User not found: $username")
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        }
+
         return ResponseEntity.ok(AuthResponse(user = mapToResponseDto(user), token = token))
     }
 
     @GetMapping("/me")
-    fun getCurrentUser(authentication: Authentication): ResponseEntity<AuthResponse> {
-        val user = userService.findByEmail(authentication.name)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+    fun getCurrentUser(authentication: Authentication?): ResponseEntity<AuthResponse> {
+        if (authentication == null) {
+            logger.warn("Authentication is null")
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        val userName = authentication.name
+        if (userName.isNullOrBlank()) {
+            logger.warn("Authentication name is empty")
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        val user = userService.findByEmail(userName)
+        if (user == null) {
+            logger.warn("User not found: $userName")
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        }
+
         return ResponseEntity.ok(AuthResponse(user = mapToResponseDto(user), token = ""))
     }
 

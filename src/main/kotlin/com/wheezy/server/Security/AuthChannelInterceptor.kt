@@ -25,39 +25,40 @@ class AuthChannelInterceptor(
                 var token: String? = null
 
                 val authHeader = accessor.getFirstNativeHeader("Authorization")
-                if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                if (!authHeader.isNullOrBlank() && authHeader.startsWith("Bearer ")) {
                     token = authHeader.substring(7)
                 }
 
-                if (token == null) {
+                if (token.isNullOrBlank()) {
                     token = accessor.getFirstNativeHeader("token")
                 }
 
-                if (token == null) {
+                if (token.isNullOrBlank()) {
                     val connectToken = accessor.getFirstNativeHeader("authorization")
-                    if (connectToken != null && connectToken.startsWith("Bearer ")) {
+                    if (!connectToken.isNullOrBlank() && connectToken.startsWith("Bearer ")) {
                         token = connectToken.substring(7)
                     }
                 }
 
-                if (token != null) {
-                    try {
-                        val username = jwtUtil.extractUsername(token)
-                        if (jwtUtil.validateToken(token, username)) {
-                            val authentication = UsernamePasswordAuthenticationToken(
-                                username, null, emptyList()
-                            )
-                            accessor.setUser(authentication)
-                            SecurityContextHolder.getContext().authentication = authentication
-                            logger.debug("WebSocket authenticated for user: $username")
-                        } else {
-                            logger.warn("Invalid JWT token for WebSocket connection")
-                        }
-                    } catch (e: Exception) {
-                        logger.warn("Error validating JWT token: ${e.message}")
-                    }
-                } else {
+                if (token.isNullOrBlank()) {
                     logger.warn("WebSocket connection without Authorization header or token")
+                    return message
+                }
+
+                try {
+                    val username = jwtUtil.extractUsername(token)
+                    if (username != null && jwtUtil.validateToken(token, username)) {
+                        val authentication = UsernamePasswordAuthenticationToken(
+                            username, null, emptyList()
+                        )
+                        accessor.setUser(authentication)
+                        SecurityContextHolder.getContext().authentication = authentication
+                        logger.debug("WebSocket authenticated for user: $username")
+                    } else {
+                        logger.warn("Invalid JWT token for WebSocket connection")
+                    }
+                } catch (e: Exception) {
+                    logger.warn("Error validating JWT token: ${e.message}")
                 }
             }
 
@@ -73,5 +74,4 @@ class AuthChannelInterceptor(
         }
         return message
     }
-
 }

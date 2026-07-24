@@ -4,13 +4,13 @@ import io.jsonwebtoken.Claims
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.SignatureAlgorithm
 import io.jsonwebtoken.io.Decoders
-import org.springframework.stereotype.Component
-import java.util.*
 import io.jsonwebtoken.security.Keys
-import java.security.Key
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.stereotype.Component
+import java.security.Key
+import java.util.*
 
 @Component
 class JwtUtil(
@@ -34,6 +34,7 @@ class JwtUtil(
     }
 
     fun validateToken(token: String, username: String): Boolean {
+        if (token.isBlank()) return false
         return try {
             val extractedUser = extractUsername(token)
             (extractedUser == username) && !isTokenExpired(token)
@@ -43,12 +44,24 @@ class JwtUtil(
         }
     }
 
-    fun extractUsername(token: String): String =
-        getClaimFromToken(token) { it.subject }
+    fun extractUsername(token: String): String? {
+        if (token.isBlank()) return null
+        return try {
+            getClaimFromToken(token) { it.subject }
+        } catch (e: Exception) {
+            logger.debug("Failed to extract username from token: ${e.message}")
+            null
+        }
+    }
 
     private fun isTokenExpired(token: String): Boolean {
-        val expiration = getClaimFromToken(token) { it.expiration }
-        return expiration.before(Date())
+        if (token.isBlank()) return true
+        return try {
+            val expiration = getClaimFromToken(token) { it.expiration }
+            expiration.before(Date())
+        } catch (e: Exception) {
+            true
+        }
     }
 
     private fun <T> getClaimFromToken(token: String, claimsResolver: (Claims) -> T): T {
@@ -66,6 +79,7 @@ class JwtUtil(
     }
 
     fun extractExpiration(token: String): Date? {
+        if (token.isBlank()) return null
         return try {
             getClaimFromToken(token) { it.expiration }
         } catch (e: Exception) {
@@ -74,9 +88,10 @@ class JwtUtil(
     }
 
     fun isTokenValid(token: String): Boolean {
+        if (token.isBlank()) return false
         return try {
             val username = extractUsername(token)
-            validateToken(token, username)
+            username != null && validateToken(token, username)
         } catch (e: Exception) {
             false
         }
